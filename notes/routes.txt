@@ -1,0 +1,22 @@
+Status
+
+GET => http://localhost:8000/api/statuses
+GET by id => http://localhost:8000/api/statuses/{status_id}
+POST => http://localhost:8000/api/statuses
+PUT => http://localhost:8000/api/statuses/{status_id}
+DELETE => http://localhost:8000/api/statuses/{status_id}
+
+------------------------------------------------------------------------------
+
+Sale
+
+GET => http://localhost:8000/api/sales
+GET by status_id => http://localhost:8000/api/sales?status_id={status_id}
+GET by customer_id => http://localhost:8000/api/sales?customer_id={customer_id}
+GET by sale_date => http://localhost:8000/api/sales?start_date=2025-11-01&end_date=2025-11-10
+GET by id => http://localhost:8000/api/sales/{sale_id}
+POST => http://localhost:8000/api/sales
+
+by filters => http://localhost:8000/api/sales?customer_id=1&status_id=2&start_date=2025-11-01&end_date=2025-11-10
+
+------------------------------------------------------------------------------

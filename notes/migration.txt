@@ -1,0 +1,34 @@
+php artisan migrate --path=/database/migrations/2025_08_11_090912_create_statuses_table.php
+
+php artisan migrate --path=/database/migrations/2025_08_13_040500_create_branches_table.php
+
+php artisan migrate --path=/database/migrations/2025_08_13_050259_create_counters_table.php
+
+php artisan migrate --path=/database/migrations/2025_08_13_090823_create_roles_table.php
+
+php artisan migrate --path=/database/migrations/0001_01_01_000000_create_users_table.php
+
+php artisan migrate
+
+---------------------------------------------------------------------------------------------------
+
+php artisan db:seed
+
+----------------------
+
+if not work db:seed try this 
+
+php artisan db:seed --class=StatusSeeder
+
+php artisan db:seed --class=UserSeeder
+
+php artisan db:seed --class=BranchSeeder
+
+php artisan db:seed --class=CounterSeeder
+
+php artisan db:seed --class=RoleSeeder
+
+php artisan db:seed --class=PermissionSeeder
+
+php artisan db:seed --class=RolePermissionSeeder
+
