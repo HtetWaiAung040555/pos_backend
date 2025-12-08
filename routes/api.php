@@ -16,7 +16,6 @@ use App\Http\Controllers\Api\StatusesController;
 use App\Http\Controllers\Api\WarehousesController;
 use App\Http\Controllers\Api\CustomerTransactionController;
 use App\Http\Controllers\Api\PromotionsController;
-use App\Http\Controllers\Api\PromotionsProductsController;
 // use App\Http\Controllers\Api\RolesController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
