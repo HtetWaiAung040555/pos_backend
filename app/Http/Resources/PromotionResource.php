@@ -17,12 +17,12 @@ class PromotionResource extends JsonResource
             'start_at' => $this->start_at,
             'end_at' => $this->end_at,
             'created_by' => [
-                'id' => $this->createdBy->id ?? null,
-                'name' => $this->createdBy->name ?? null,
+                'id' => $this->createdBy->id,
+                'name' => $this->createdBy->name,
             ],
             'updated_by' => [
-                'id' => $this->updatedBy->id ?? null,
-                'name' => $this->updatedBy->name ?? null,
+                'id' => $this->updatedBy->id,
+                'name' => $this->updatedBy->name,
             ],
             'created_at' => optional($this->created_at)->toDateTimeString(),
             'updated_at' => optional($this->updated_at)->toDateTimeString(),
