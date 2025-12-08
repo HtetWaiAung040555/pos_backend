@@ -18,7 +18,9 @@ class Promotion extends Model
         'discount_value',
         'start_at', 
         'end_at', 
-        'status_id', 
+        'status_id',
+        'void_at',
+        'void_by',
         'created_by', 
         'updated_by'
     ];
@@ -37,5 +39,9 @@ class Promotion extends Model
 
     public function products() {
         return $this->belongsToMany(Product::class, 'promotions_products', 'promotion_id', 'product_id');
+    }
+
+    public function voidBy(){
+        return $this->belongsTo(User::class, 'void_by');
     }
 }
