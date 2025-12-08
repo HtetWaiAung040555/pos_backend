@@ -80,6 +80,7 @@ Route::middleware(['auth:sanctum'])->group(function () {
 
     Route::apiResource('/customers_transactions', CustomerTransactionController::class);
 
+    Route::get('/promotions/checkprice/{id}', [PromotionsController::class, 'checkPrice']);
     Route::apiResource('/promotions', PromotionsController::class);
 
 });
