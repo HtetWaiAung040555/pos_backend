@@ -37,7 +37,7 @@ class PromotionResource extends JsonResource
                     'sec_prop' => $product->sec_prop,
                     'price' => $product->price,
                     'barcode' => $product->barcode,
-                    'image_url' => $product->image_url,
+                    'image_url' => $product->image ? asset($this->image) : null,
                     'status' => $product->status ? [
                         'id'   => $product->status->id,
                         'name' => $product->status->name,
