@@ -180,6 +180,8 @@ class PromotionsController extends Controller
 
         return response()->json([
             'promotion_id'    => $promotion ? $promotion->id : null,
+            'discount_type'   => $promotion->discount_type,
+            'discount_value'  => $promotion->discount_value,
             'discount_amount' => $discount_amount,
         ]);
     }
