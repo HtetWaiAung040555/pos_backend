@@ -95,6 +95,8 @@ class SaleController extends Controller
                     'product_id' => $product->id,
                     'quantity' => $item['quantity'],
                     'price' => $product->price,
+                    'discount_amount' => $product->discount_amount,
+                    'discount_price' => $product->discount_price,
                     'total' => $product->price * $item['quantity'],
                 ]);
 

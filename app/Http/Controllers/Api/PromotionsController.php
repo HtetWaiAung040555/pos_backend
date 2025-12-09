@@ -8,6 +8,8 @@ use Illuminate\Http\Request;
 use App\Http\Resources\PromotionResource;
 use App\Models\Product;
 use App\Models\Promotion;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 
 class PromotionsController extends Controller
 {
@@ -114,15 +116,39 @@ class PromotionsController extends Controller
         return new PromotionResource($promotion->fresh(['products']));
     }
 
-    public function destroy(string $id)
+    public function destroy(Request $request, string $id)
     {
+        DB::beginTransaction();
+
         try {
-            Promotion::findOrFail($id)->delete();
-            return response()->json(['message' => 'Deleted Successfully'], 200);
+            $promotion = Promotion::with('products')->findOrFail($id);
+
+            $voidStatus = \App\Models\Status::where('name', 'void')->firstOrFail();
+
+            $promotion->status_id = $voidStatus->id;
+            $promotion->void_at   = now();
+            $promotion->void_by   = Auth::check() ? Auth::id() : $request->void_by;
+            $promotion->save();
+
+            $promotion->products()->sync([]);
+
+            DB::commit();
+
+            return response()->json([
+                'message' => 'Promotion voided successfully.'
+            ], 200);
+
         } catch (\Exception $e) {
-            return response()->json(['error' => 'Promotion cannot be deleted'], 400);
+            DB::rollBack();
+
+            return response()->json([
+                'error'   => 'Failed to void promotion',
+                'details' => $e->getMessage()
+            ], 500);
         }
     }
+
+
 
     public function checkPrice($id)
     {

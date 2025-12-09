@@ -16,6 +16,11 @@ class PromotionResource extends JsonResource
             'discount_value' => $this->discount_value,
             'start_at' => $this->start_at,
             'end_at' => $this->end_at,
+            'void_at' => optional($this->void_at)->toDateTimeString(),
+            'void_by' => $this->voidByUser ? [
+                'id' => $this->voidByUser->id,
+                'name' => $this->voidByUser->name,
+            ] : null,
             'created_by' => [
                 'id' => $this->createdBy->id,
                 'name' => $this->createdBy->name,
@@ -37,7 +42,7 @@ class PromotionResource extends JsonResource
                     'sec_prop' => $product->sec_prop,
                     'price' => $product->price,
                     'barcode' => $product->barcode,
-                    'image_url' => $product->image_url,
+                    'image_url' => $product->image ? asset($this->image) : null,
                     'status' => $product->status ? [
                         'id'   => $product->status->id,
                         'name' => $product->status->name,
