@@ -16,6 +16,10 @@ class PromotionResource extends JsonResource
             'discount_value' => $this->discount_value,
             'start_at' => $this->start_at,
             'end_at' => $this->end_at,
+            'status' => $this->status ? [
+                'id'   => $this->status->id,
+                'name' => $this->status->name,
+            ] : null,
             'void_at' => optional($this->void_at)->toDateTimeString(),
             'void_by' => $this->voidByUser ? [
                 'id' => $this->voidByUser->id,

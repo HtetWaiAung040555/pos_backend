@@ -127,7 +127,7 @@ class PromotionsController extends Controller
 
             $promotion->status_id = $voidStatus->id;
             $promotion->void_at   = now();
-            $promotion->void_by   = Auth::check() ? Auth::id() : $request->void_by;
+            $promotion->void_by   = $request->void_by;
             $promotion->save();
 
             $promotion->products()->sync([]);
