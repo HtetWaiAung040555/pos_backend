@@ -90,17 +90,25 @@ class SaleController extends Controller
             foreach ($request->products as $item) {
                 $product = Product::findOrFail($item['product_id']);
 
+                if (!empty($item['promotion_id'])) {
+
+                    $finalPrice = $product->price - $item->discount_amount;
+            
+                } else {
+                    $finalPrice = $product->price;
+                }
+
                 SaleDetail::create([
                     'sale_id' => $sale->id,
                     'product_id' => $product->id,
                     'quantity' => $item['quantity'],
                     'price' => $product->price,
-                    'discount_amount' => $product->discount_amount,
-                    'discount_price' => $product->discount_price,
-                    'total' => $product->price * $item['quantity'],
+                    'discount_amount' => $item->discount_amount,
+                    'discount_price' => $item->discount_price,
+                    'promotion_id' => $item->promotion_id,
+                    'total' => $finalPrice * $item['quantity'],
                 ]);
 
-                // Safe Inventory lookup or create if missing
                 $inventory = Inventory::firstOrCreate(
                     ['product_id' => $product->id, 'warehouse_id' => $request->warehouse_id],
                     [

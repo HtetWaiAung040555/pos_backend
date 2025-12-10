@@ -127,7 +127,7 @@ class PromotionsController extends Controller
 
             $promotion->status_id = $voidStatus->id;
             $promotion->void_at   = now();
-            $promotion->void_by   = Auth::check() ? Auth::id() : $request->void_by;
+            $promotion->void_by   = $request->void_by;
             $promotion->save();
 
             $promotion->products()->sync([]);
@@ -180,6 +180,8 @@ class PromotionsController extends Controller
 
         return response()->json([
             'promotion_id'    => $promotion ? $promotion->id : null,
+            'discount_type'   => $promotion->discount_type,
+            'discount_value'  => $promotion->discount_value,
             'discount_amount' => $discount_amount,
         ]);
     }
