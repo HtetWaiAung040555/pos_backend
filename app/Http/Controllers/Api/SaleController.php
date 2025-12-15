@@ -12,6 +12,7 @@ use App\Models\StockTransaction;
 use App\Models\CustomerTransaction;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 class SaleController extends Controller
 {
@@ -61,7 +62,7 @@ class SaleController extends Controller
             $totalAmount = 0;
             foreach ($request->products as $item) {
                 $product = Product::findOrFail($item['product_id']);
-                $totalAmount += $product->price * $item['quantity'];
+                $totalAmount += ($item['promotion_id']? $item['discount_price'] : $product->price) * $item['quantity'];
             }
 
             // 2. Calculate change (due_amount)
@@ -90,12 +91,13 @@ class SaleController extends Controller
             foreach ($request->products as $item) {
                 $product = Product::findOrFail($item['product_id']);
 
+                $finalPrice = $product->price;
+
                 if (!empty($item['promotion_id'])) {
 
-                    $finalPrice = $product->price - $item->discount_amount;
+
+                    $finalPrice = $product->price - $item['discount_amount'];
             
-                } else {
-                    $finalPrice = $product->price;
                 }
 
                 SaleDetail::create([
@@ -103,9 +105,9 @@ class SaleController extends Controller
                     'product_id' => $product->id,
                     'quantity' => $item['quantity'],
                     'price' => $product->price,
-                    'discount_amount' => $item->discount_amount,
-                    'discount_price' => $item->discount_price,
-                    'promotion_id' => $item->promotion_id,
+                    'discount_amount' => $item['discount_amount'] ?? 0,
+                    'discount_price' => $item['discount_price'] ?? 0,
+                    'promotion_id' => $item['promotion_id'] ?? null,
                     'total' => $finalPrice * $item['quantity'],
                 ]);
 
