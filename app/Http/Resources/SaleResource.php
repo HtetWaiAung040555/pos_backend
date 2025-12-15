@@ -41,6 +41,7 @@ class SaleResource extends JsonResource
             'customer' => [
                 'id' => $this->customer->id ?? null,
                 'name' => $this->customer->name ?? null,
+                'balance' => $this->customer->balance ?? 0,
             ],
             'payment_method' => [
                 'id' => $this->paymentMethod->id ?? null,
