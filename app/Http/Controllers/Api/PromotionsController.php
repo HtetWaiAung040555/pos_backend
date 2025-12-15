@@ -1,20 +1,38 @@
 <?php
 
 namespace App\Http\Controllers\Api;
-
 use App\Http\Controllers\Controller;
-use App\Http\Resources\ProductResource;
-use Illuminate\Http\Request;
 use App\Http\Resources\PromotionResource;
 use App\Models\Product;
 use App\Models\Promotion;
-use Illuminate\Support\Facades\Auth;
+use App\Models\Status;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
 class PromotionsController extends Controller
 {
     public function index()
     {
+        $now = now();
+
+        $inactiveStatus = Status::where('name', 'inactive')->value('id');
+        $activeStatus   = Status::where('name', 'active')->value('id');
+
+        DB::transaction(function () use ($now, $inactiveStatus, $activeStatus) {
+
+            Promotion::whereNull('void_at')
+                ->where(function ($q) use ($now) {
+                    $q->where('start_at', '>', $now)
+                    ->orWhere('end_at', '<', $now);
+                })
+                ->update(['status_id' => $inactiveStatus]);
+
+            Promotion::whereNull('void_at')
+                ->where('start_at', '<=', $now)
+                ->where('end_at', '>=', $now)
+                ->update(['status_id' => $activeStatus]);
+        });
+
         $promotions = Promotion::with('products')->get();
         return PromotionResource::collection($promotions);
     }
@@ -50,6 +68,7 @@ class PromotionsController extends Controller
             'discount_value' => $request->discount_value,
             'start_at'       => $request->start_at,
             'end_at'         => $request->end_at,
+            'status_id'      => $request->status_id,
             'created_by'     => $request->created_by,
             'updated_by'     => $request->updated_by ?? $request->created_by,
         ]);
@@ -166,8 +185,6 @@ class PromotionsController extends Controller
         $promotion = Promotion::whereHas('products', function ($q) use ($id) {
                 $q->where('product_id', $id);
             })
-            ->where('start_at', '<=', $now)
-            ->where('end_at', '>=', $now)
             ->first();
 
         $discount_amount = 0;
