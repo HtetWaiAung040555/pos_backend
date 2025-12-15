@@ -16,9 +16,9 @@ class PromotionsController extends Controller
         $now = now();
 
         $inactiveStatus = Status::where('name', 'inactive')->value('id');
-        $activeStatus   = Status::where('name', 'active')->value('id');
+        // $activeStatus   = Status::where('name', 'active')->value('id');
 
-        DB::transaction(function () use ($now, $inactiveStatus, $activeStatus) {
+        DB::transaction(function () use ($now, $inactiveStatus) {
 
             Promotion::whereNull('void_at')
                 ->where(function ($q) use ($now) {
@@ -27,10 +27,10 @@ class PromotionsController extends Controller
                 })
                 ->update(['status_id' => $inactiveStatus]);
 
-            Promotion::whereNull('void_at')
-                ->where('start_at', '<=', $now)
-                ->where('end_at', '>=', $now)
-                ->update(['status_id' => $activeStatus]);
+            // Promotion::whereNull('void_at')
+            //     ->where('start_at', '<=', $now)
+            //     ->where('end_at', '>=', $now)
+            //     ->update(['status_id' => $activeStatus]);
         });
 
         $promotions = Promotion::with('products')->get();
