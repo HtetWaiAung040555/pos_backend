@@ -13,6 +13,7 @@ class InventoryResource extends JsonResource
             'id'         => $this->id,
             'name'       => $this->name,
             'qty'        => $this->qty,
+            'expired_date' => $this->expired_date,
             
             'product'    => $this->product ? [
                 'id'       => $this->product->id,

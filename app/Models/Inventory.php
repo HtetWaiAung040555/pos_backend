@@ -14,8 +14,11 @@ class Inventory extends Model
     protected $fillable = [
         'name',
         'qty',
+        'expired_date',
         'product_id',
         'warehouse_id',
+        'void_at',
+        'void_by',
         'created_by',
         'updated_by'
     ];
@@ -35,4 +38,10 @@ class Inventory extends Model
     public function updatedBy() { 
         return $this->belongsTo(User::class, 'updated_by'); 
     }
+
+    public function voidBy()
+    {
+        return $this->belongsTo(User::class, 'void_by');
+    }
+    
 }

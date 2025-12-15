@@ -16,6 +16,7 @@ use App\Http\Controllers\Api\StatusesController;
 use App\Http\Controllers\Api\WarehousesController;
 use App\Http\Controllers\Api\CustomerTransactionController;
 use App\Http\Controllers\Api\PromotionsController;
+use App\Models\Inventory;
 // use App\Http\Controllers\Api\RolesController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
@@ -66,6 +67,7 @@ Route::middleware(['auth:sanctum'])->group(function () {
     // Route::put('/products/{id}', [ProductsController::class, 'update']);
     // Route::delete('/products/{id}', [ProductsController::class, 'destroy']);
 
+    Route::post('/inventories/adjust', [InventoriesController::class, 'adjust']);
     Route::apiResource('/inventories', InventoriesController::class);
 
     Route::apiResource('/warehouses', WarehousesController::class);

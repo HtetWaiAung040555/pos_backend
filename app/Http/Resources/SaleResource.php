@@ -38,6 +38,10 @@ class SaleResource extends JsonResource
 
         return [
             'id' => $this->id,
+            'warehouse_id' => [
+                'id' => $this->warehouse->id ?? null,
+                'name' => $this->warehouse->name ?? null,
+            ],
             'customer' => [
                 'id' => $this->customer->id ?? null,
                 'name' => $this->customer->name ?? null,

@@ -16,6 +16,7 @@ class Sale extends Model
 
     protected $fillable = [
         'invoice_no',
+        'warehouse_id',
         'customer_id',
         'total_amount',
         'paid_amount',
@@ -57,6 +58,11 @@ class Sale extends Model
     public function details()
     {
         return $this->hasMany(SaleDetail::class);
+    }
+
+    public function warehouse()
+    {
+        return $this->belongsTo(Warehouse::class);
     }
 
     public function customer()

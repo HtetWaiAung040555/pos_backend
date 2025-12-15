@@ -42,6 +42,7 @@ class SaleController extends Controller
     public function store(Request $request)
     {
         $request->validate([
+            'warehouse_id' => 'required|exists:warehouses,id',
             'customer_id' => 'required|exists:customers,id',
             'payment_id' => 'required|exists:payment_methods,id',
             'paid_amount' => 'nullable|numeric|min:0',
@@ -56,6 +57,8 @@ class SaleController extends Controller
             'products.*.quantity' => 'required|integer|min:1',
         ]);
 
+        Log::info($request->all());
+
         DB::beginTransaction();
         try {
             // 1. Calculate total amount
@@ -66,15 +69,14 @@ class SaleController extends Controller
             }
 
             // 2. Calculate change (due_amount)
-            $paidAmount = $request->paid_amount;
+            $paidAmount = $request->paid_amount ?? 0;
             $dueAmount = $paidAmount - $totalAmount; // change amount
 
-            if ($dueAmount < 0) {
-                $dueAmount = 0; // avoid negative change
-            }
+            if ($dueAmount < 0) $dueAmount = 0; // avoid negative change
 
             // 3. Create Sale
             $sale = Sale::create([
+                'warehouse_id' => $request->warehouse_id,
                 'customer_id' => $request->customer_id,
                 'total_amount' => $totalAmount,
                 'paid_amount' => $paidAmount,
@@ -90,14 +92,10 @@ class SaleController extends Controller
             // 4. Create Sale Details and Stock Transactions
             foreach ($request->products as $item) {
                 $product = Product::findOrFail($item['product_id']);
-
                 $finalPrice = $product->price;
 
                 if (!empty($item['promotion_id'])) {
-
-
                     $finalPrice = $product->price - $item['discount_amount'];
-            
                 }
 
                 SaleDetail::create([
@@ -111,32 +109,101 @@ class SaleController extends Controller
                     'total' => $finalPrice * $item['quantity'],
                 ]);
 
-                $inventory = Inventory::firstOrCreate(
-                    ['product_id' => $product->id, 'warehouse_id' => $request->warehouse_id],
-                    [
-                        'qty' => 0,
-                        'name' => $product->name,
-                        'created_by' => $request->created_by,
-                        'updated_by' => $request->updated_by ?? $request->created_by, 
-                    ]
-                );
+                $remainingQty = $item['quantity'];
 
-                $inventory->decrement('qty', $item['quantity']);
+                // 1️⃣ Get available stock (expiry first, non-expiry later)
+                $inventories = Inventory::where('product_id', $product->id)
+                    ->where('warehouse_id', $request->warehouse_id)
+                    ->where('qty', '>', 0)
+                    ->orderByRaw('expired_date IS NULL') // expiry first
+                    ->orderBy('expired_date')
+                    ->orderBy('created_at')
+                    ->lockForUpdate()
+                    ->get();
 
-                StockTransaction::create([
-                    'inventory_id' => $inventory->id,
-                    'reference_id' => $sale->id,
-                    'reference_type' => 'sale',
-                    'quantity_change' => -$item['quantity'],
-                    'type' => 'out',
-                    'created_by' => $request->created_by,
-                    'updated_by' => $request->updated_by ?? $request->created_by,
-                ]);
+                Log::info($inventories->all());
+    
+                // 2️⃣ Deduct from available inventory
+                foreach ($inventories as $inventory) {
+                    if ($remainingQty <= 0) {
+                        break;
+                    }
+    
+                    $deductQty = min($remainingQty, $inventory->qty);
+    
+                    $inventory->qty -= $deductQty;
+                    $inventory->updated_by = $request->created_by;
+                    $inventory->save();
+    
+                    StockTransaction::create([
+                        'inventory_id'    => $inventory->id,
+                        'reference_id'    => $sale->id,
+                        'reference_type'  => 'sale',
+                        'quantity_change' => $deductQty,
+                        'type'            => 'out',
+                        'created_by'      => $request->created_by,
+                        'updated_by'      => $request->updated_by ?? $request->created_by
+                    ]);
+    
+                    $remainingQty -= $deductQty;
+                }
+    
+                // 3️⃣ If still remaining → create or update negative stock
+                if ($remainingQty > 0) {
+                    $negativeInventory = Inventory::firstOrCreate(
+                        [
+                            'product_id'   => $product->id,
+                            'warehouse_id' => $request->warehouse_id,
+                            'expired_date'  => null,
+                        ],
+                        [
+                            'qty'         => 0,
+                            'created_by'  => $request->created_by,
+                            'updated_by'  => $request->updated_by ?? $request->created_by
+                        ]
+                    );
+    
+                    $negativeInventory->qty -= $remainingQty;
+                    $negativeInventory->updated_by = $request->created_by;
+                    $negativeInventory->save();
+    
+                    StockTransaction::create([
+                        'inventory_id'    => $negativeInventory->id,
+                        'reference_id'    => $sale->id,
+                        'reference_type'  => 'sale',
+                        'quantity_change' => $remainingQty,
+                        'type'            => 'out',
+                        'created_by'      => $request->created_by
+                    ]);
+                }
+
+
+                // $inventory = Inventory::firstOrCreate(
+                //     [
+                //         'product_id' => $product->id, 
+                //         'warehouse_id' => $request->warehouse_id,
+                //         'qty' => 0,
+                //         'name' => $product->name,
+                //         'created_by' => $request->created_by,
+                //         'updated_by' => $request->updated_by ?? $request->created_by, 
+                //     ]
+                // );
+
+                // $inventory->decrement('qty', $item['quantity']);
+
+                // StockTransaction::create([
+                //     'inventory_id' => $inventory->id,
+                //     'reference_id' => $sale->id,
+                //     'reference_type' => 'sale',
+                //     'quantity_change' => -$item['quantity'],
+                //     'type' => 'out',
+                //     'created_by' => $request->created_by,
+                //     'updated_by' => $request->updated_by ?? $request->created_by,
+                // ]);
             }
 
             DB::commit();
-
-            return new SaleResource($sale->fresh(['customer', 'status', 'paymentMethod', 'details.product', 'createdBy', 'updatedBy']));
+            return new SaleResource($sale->fresh(['warehouse','customer', 'status', 'paymentMethod', 'details.product', 'createdBy', 'updatedBy']));
 
         } catch (\Exception $e) {
             DB::rollBack();
@@ -220,11 +287,9 @@ class SaleController extends Controller
         DB::beginTransaction();
 
         try {
-            // Load sale + details
             $sale = Sale::with('details')->findOrFail($id);
-
-            // Find void status ID
             $voidStatus = \App\Models\Status::where('name', 'void')->first();
+
             // if (!$voidStatus) {
             //     return response()->json(['error' => 'Void status not found'], 404);
             // }
@@ -242,14 +307,12 @@ class SaleController extends Controller
                                     ->where('warehouse_id', $sale->warehouse_id)
                                     ->first();
 
-                if ($inventory) {
-                    $inventory->increment('qty', $detail->quantity);
-                }
+                if ($inventory) $inventory->increment('qty', $detail->quantity);
 
                 // 3. Insert stock transaction
                 StockTransaction::create([
                     'inventory_id' => $inventory->id ?? null,
-                    'reference_id' => $sale->id,
+                    'reference_d' => $sale->id,
                     'reference_type' => 'sale_void',
                     'quantity_change' => $detail->quantity,
                     'type' => 'in',
