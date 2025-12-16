@@ -12,7 +12,18 @@ return new class extends Migration
             $table->id();
             $table->foreignId('inventory_id')->constrained('inventories')->cascadeOnDelete();
             $table->string('reference_id')->nullable();
-            $table->enum('reference_type', ['sale', 'purchase'])->nullable();
+            $table->enum('reference_type', [
+                    'sale',
+                    'purchase',
+                    'opening',
+                    'opening_adjustment',
+                    'adjustment',
+                    'sale_return',
+                    'sale_return_update',
+                    'opening_void',
+                    'sale_void',
+                    'sale_return_void'
+                ])->nullable();
             $table->integer('quantity_change');
             $table->enum('type', ['in', 'out'])->comment('in = added to stock, out = removed from stock');
             $table->unsignedBigInteger('created_by');

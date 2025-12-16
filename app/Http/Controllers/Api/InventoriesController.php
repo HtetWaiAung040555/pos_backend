@@ -179,15 +179,73 @@ class InventoriesController extends Controller
         }
     }
 
-    public function destroy(string $id)
+    public function destroy(Request $request, string $id)
     {
+        $request->validate([
+            'void_by' => 'required|exists:users,id',
+        ]);
+
+        DB::beginTransaction();
+
         try {
-            Inventory::findOrFail($id)->delete();
-            return response()->json(['message' => 'Deleted Successfully'], 200);
+            $inventory = Inventory::lockForUpdate()->findOrFail($id);
+
+            // 1️⃣ Prevent double void
+            if ($inventory->status === 'void') {
+                return response()->json([
+                    'error' => 'Inventory already voided'
+                ], 422);
+            }
+
+            // 2️⃣ Block if used in SALE
+            $usedInSale = StockTransaction::where('inventory_id', $inventory->id)
+                ->where('type', 'out')
+                ->where('reference_type', 'sale')
+                ->exists();
+
+            if ($usedInSale) {
+                return response()->json([
+                    'error' => 'Inventory was used in sale and cannot be voided'
+                ], 422);
+            }
+
+            // 3️⃣ Reverse remaining stock
+            if ($inventory->qty != 0) {
+                StockTransaction::create([
+                    'inventory_id'    => $inventory->id,
+                    'reference_id'    => null,
+                    'reference_type'  => 'inventory_void',
+                    'quantity_change' => abs($inventory->qty),
+                    'type'            => $inventory->qty > 0 ? 'out' : 'in',
+                    'created_by'      => $request->void_by,
+                ]);
+
+                $inventory->qty = 0;
+            }
+
+            // 4️⃣ Mark inventory as VOID
+            $inventory->update([
+                'status'     => 'void',
+                'updated_by' => $request->void_by,
+            ]);
+
+            DB::commit();
+
+            return response()->json([
+                'message' => 'Inventory voided successfully'
+            ], 200);
+
         } catch (\Exception $e) {
-            return response()->json(['error' => 'Inventory cannot be deleted'], 400);
+            DB::rollBack();
+
+            return response()->json([
+                'error'   => 'Failed to void inventory',
+                'details'=> $e->getMessage()
+            ], 500);
         }
     }
+
+
 
     public function adjust(Request $request)
     {

@@ -10,8 +10,7 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('sales', function (Blueprint $table) {
-            $table->unsignedBigInteger('warehouse_id')->after('id');
-            $table->foreign('warehouse_id')->references('id')->on('warehouses')->restrictOnDelete();
+            $table->foreignId('warehouse_id')->constrained('warehouses')->restrictOnDelete();
         });
     }
 

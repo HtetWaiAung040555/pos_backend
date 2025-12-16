@@ -18,7 +18,7 @@ class SaleController extends Controller
 {
     public function index(Request $request)
     {
-        $query = Sale::with(['customer', 'status', 'paymentMethod', 'details.product', 'createdBy', 'updatedBy']);
+        $query = Sale::with(['customer', 'status', 'warehouse', 'paymentMethod', 'details.product', 'createdBy', 'updatedBy']);
 
         if ($request->filled('customer_id')) {
             $query->where('customer_id', $request->customer_id);
@@ -26,6 +26,10 @@ class SaleController extends Controller
 
         if ($request->filled('status_id')) {
             $query->where('status_id', $request->status_id);
+        }
+
+        if ($request->filled('warehouse_id')) {
+            $query->where('warehouse_id', $request->warehouse_id);
         }
 
         if ($request->filled('start_date') && $request->filled('end_date')) {
@@ -284,15 +288,16 @@ class SaleController extends Controller
 
     public function destroy(Request $request, string $id)
     {
+
+        $request->validate([
+            'updated_by' => 'required|exists:users,id',
+        ]);
+        
         DB::beginTransaction();
 
         try {
             $sale = Sale::with('details')->findOrFail($id);
             $voidStatus = \App\Models\Status::where('name', 'void')->first();
-
-            // if (!$voidStatus) {
-            //     return response()->json(['error' => 'Void status not found'], 404);
-            // }
 
             // 1. Update sale status
             $sale->status_id = $voidStatus->id;

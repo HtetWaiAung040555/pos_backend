@@ -3,27 +3,23 @@
 namespace App\Models;
 
 use Carbon\Carbon;
-use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
-class Sale extends Model
+class SaleReturn extends Model
 {
-    use HasFactory;
-
-    protected $table = 'sales';
+    protected $table = 'sale_returns';
     protected $primaryKey = 'id';
     public $incrementing = false;
 
     protected $fillable = [
-        'warehouse_id',
+        'sale_id',
         'customer_id',
+        'warehouse_id',
         'total_amount',
-        'paid_amount',
-        'due_amount',
+        'remark',
+        'return_date',
         'payment_id',
         'status_id',
-        'remark',
-        'sale_date',
         'created_by',
         'updated_by',
         'void_at',
@@ -31,7 +27,7 @@ class Sale extends Model
     ];
 
     protected $casts = [
-        'sale_date' => 'datetime',
+        'return_date' => 'datetime',
         'void_at' => 'datetime',
     ];
 
@@ -39,10 +35,10 @@ class Sale extends Model
     {
         parent::boot();
 
-        static::creating(function ($sale) {
+        static::creating(function ($sale_return) {
             $dateCode = Carbon::now()->format('dmy');
 
-            $lastSale = self::where('id', 'like', "S-{$dateCode}%")
+            $lastSale = self::where('id', 'like', "SR-{$dateCode}%")
                 ->orderBy('id', 'desc')
                 ->first();
 
@@ -50,13 +46,17 @@ class Sale extends Model
                 ? intval(substr($lastSale->id, -5)) + 1
                 : 1;
 
-            $sale->id = 'S-' . $dateCode . str_pad($nextNumber, 5, '0', STR_PAD_LEFT);
+            $sale_return->id = 'SR-' . $dateCode . str_pad($nextNumber, 5, '0', STR_PAD_LEFT);
         });
+    }
+
+    public function sales(){
+        return $this->belongsTo(Sale::class);
     }
 
     public function details()
     {
-        return $this->hasMany(SaleDetail::class);
+        return $this->hasMany(SaleReturnDetail::class);
     }
 
     public function warehouse()
