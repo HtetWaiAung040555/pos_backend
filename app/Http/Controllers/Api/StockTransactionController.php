@@ -5,15 +5,16 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\StockTransaction;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 
 class StockTransactionController extends Controller
 {
     public function index(Request $request)
     {
+        Log::info($request->all());
         $query = StockTransaction::query()
             ->with([
-                'inventory.product', // optional, if relation exists
-                'createdBy:id,name'     // created_by user
+                'inventory.product'
             ]);
 
         // 🔍 Filter by inventory
@@ -37,17 +38,17 @@ class StockTransactionController extends Controller
         }
 
         // 📅 Date range filter
-        if ($request->filled('from_date') && $request->filled('to_date')) {
-            $query->whereBetween('created_at', [
-                $request->from_date . ' 00:00:00',
-                $request->to_date . ' 23:59:59',
-            ]);
+        if ($request->filled('start_date') && $request->filled('end_date')) {
+            $query->whereBetween('created_at', [$request->start_date, $request->end_date]);
+        } elseif ($request->filled('start_date')) {
+            $query->whereDate('created_at', '>=', $request->start_date);
+        } elseif ($request->filled('end_date')) {
+            $query->whereDate('created_at', '<=', $request->end_date);
         }
 
         // ⬇️ Latest first
         $transactions = $query
-            ->orderBy('created_at', 'desc')
-            ->paginate($request->get('per_page', 20));
+            ->orderBy('created_at', 'desc')->get();
 
         return response()->json($transactions);
     }

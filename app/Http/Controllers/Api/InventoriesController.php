@@ -125,7 +125,6 @@ class InventoriesController extends Controller
             $inventory = Inventory::lockForUpdate()->findOrFail($id);
 
             $request->validate([
-                'name'          => 'sometimes|required|string|max:255',
                 'qty'           => 'sometimes|required|integer',
                 'expired_date'  => 'sometimes|nullable|date',
                 'updated_by'    => 'required|exists:users,id',
@@ -285,7 +284,9 @@ class InventoriesController extends Controller
         } catch (\Exception $e) {
             DB::rollBack();
             return response()->json([
-                'error' => 'Adjustment failed',
+                'errors' => [
+                    'message' => 'Adjustment failed'
+                ],
                 'details' => $e->getMessage()
             ], 500);
         }
