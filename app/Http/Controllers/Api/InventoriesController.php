@@ -214,7 +214,7 @@ class InventoriesController extends Controller
                 StockTransaction::create([
                     'inventory_id'    => $inventory->id,
                     'reference_id'    => null,
-                    'reference_type'  => 'inventory_void',
+                    'reference_type'  => 'opening_void',
                     'quantity_change' => abs($inventory->qty),
                     'type'            => $inventory->qty > 0 ? 'out' : 'in',
                     'created_by'      => $request->void_by,
@@ -270,7 +270,8 @@ class InventoriesController extends Controller
                 'inventory_id'    => $inventory->id,
                 'reference_id'    => null,
                 'reference_type'  => 'adjustment',
-                'quantity_change' => abs($request->qty),
+                'quantity_change' => $request->qty,
+                'reason'          => $request->reason,
                 'type'            => $request->qty > 0 ? 'in' : 'out',
                 'created_by'      => $request->created_by,
             ]);

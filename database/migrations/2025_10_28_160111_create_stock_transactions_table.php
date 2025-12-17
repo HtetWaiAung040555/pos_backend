@@ -25,6 +25,7 @@ return new class extends Migration
                     'sale_return_void'
                 ])->nullable();
             $table->integer('quantity_change');
+            $table->string('reason')->nullable();
             $table->enum('type', ['in', 'out'])->comment('in = added to stock, out = removed from stock');
             $table->unsignedBigInteger('created_by');
             $table->timestamps();

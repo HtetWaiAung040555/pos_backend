@@ -290,7 +290,7 @@ class SaleController extends Controller
     {
 
         $request->validate([
-            'updated_by' => 'required|exists:users,id',
+            'void_by' => 'required|exists:users,id',
         ]);
         
         DB::beginTransaction();
