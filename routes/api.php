@@ -69,7 +69,7 @@ Route::middleware(['auth:sanctum'])->group(function () {
     // Route::put('/products/{id}', [ProductsController::class, 'update']);
     // Route::delete('/products/{id}', [ProductsController::class, 'destroy']);
 
-    Route::get('/stocktransactions', [StockTransactionController::class, 'index']);
+    Route::get('/stock_transactions', [StockTransactionController::class, 'index']);
 
     Route::post('/inventories/adjust', [InventoriesController::class, 'adjust']);
     Route::apiResource('/inventories', InventoriesController::class);
