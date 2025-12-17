@@ -17,6 +17,7 @@ use App\Http\Controllers\Api\WarehousesController;
 use App\Http\Controllers\Api\CustomerTransactionController;
 use App\Http\Controllers\Api\PromotionsController;
 use App\Http\Controllers\Api\SaleReturnController;
+use App\Http\Controllers\Api\StockTransactionController;
 use App\Models\Inventory;
 // use App\Http\Controllers\Api\RolesController;
 use Illuminate\Http\Request;
@@ -67,6 +68,8 @@ Route::middleware(['auth:sanctum'])->group(function () {
     // Route::post('/products', [ProductsController::class, 'store']);
     // Route::put('/products/{id}', [ProductsController::class, 'update']);
     // Route::delete('/products/{id}', [ProductsController::class, 'destroy']);
+
+    Route::get('/stocktransactions', [StockTransactionController::class, 'index']);
 
     Route::post('/inventories/adjust', [InventoriesController::class, 'adjust']);
     Route::apiResource('/inventories', InventoriesController::class);
