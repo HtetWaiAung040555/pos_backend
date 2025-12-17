@@ -13,7 +13,7 @@ class StockTransactionController extends Controller
         $query = StockTransaction::query()
             ->with([
                 'inventory.product', // optional, if relation exists
-                'creator:id,name'     // created_by user
+                'createdBy:id,name'     // created_by user
             ]);
 
         // 🔍 Filter by inventory
