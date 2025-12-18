@@ -11,7 +11,7 @@ class WarehousesController extends Controller
 {
     public function index()
     {
-        $warehouses = Warehouse::with(['createdBy', 'updatedBy'])->get();
+        $warehouses = Warehouse::with(["createdBy", "updatedBy"])->get();
         return WarehouseResource::collection($warehouses);
     }
 
@@ -19,16 +19,19 @@ class WarehousesController extends Controller
     public function store(Request $request)
     {
         $request->validate([
-            'name' => 'required|string|max:255',
+            "name" => "required|string|max:255",
         ]);
 
         $warehouse = Warehouse::create([
-            'name' => $request->input('name'),
-            'created_by' => $request->input('created_by'),
-            'updated_by' => $request->input('updated_by') ?? $request->input('created_by'),
+            "name" => $request->input("name"),
+            "created_by" => $request->input("created_by"),
+            "updated_by" =>
+                $request->input("updated_by") ?? $request->input("created_by"),
         ]);
 
-        return new WarehouseResource($warehouse->fresh(['createdBy', 'updatedBy']));
+        return new WarehouseResource(
+            $warehouse->fresh(["createdBy", "updatedBy"]),
+        );
     }
 
     // Get a single warehouse
@@ -42,16 +45,18 @@ class WarehousesController extends Controller
     public function update(Request $request, $id)
     {
         $request->validate([
-            'name' => 'required|string|max:255',
+            "name" => "required|string|max:255",
         ]);
 
         $warehouse = Warehouse::findOrFail($id);
         $warehouse->update([
-            'name' => $request->input('name'),
-            'updated_by' => $request->input('updated_by'),
+            "name" => $request->input("name"),
+            "updated_by" => $request->input("updated_by"),
         ]);
 
-        return new WarehouseResource($warehouse->fresh(['createdBy', 'updatedBy']));
+        return new WarehouseResource(
+            $warehouse->fresh(["createdBy", "updatedBy"]),
+        );
     }
 
     // Delete a warehouse
@@ -60,6 +65,9 @@ class WarehousesController extends Controller
         $warehouse = Warehouse::findOrFail($id);
         $warehouse->delete();
 
-        return response()->json(['message' => 'Warehouse deleted successfully'], 200);
+        return response()->json(
+            ["message" => "Warehouse deleted successfully"],
+            200,
+        );
     }
 }

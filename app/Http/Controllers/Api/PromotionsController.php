@@ -49,7 +49,7 @@ class PromotionsController extends Controller
             'products'        => 'nullable|array',
             'products.*'      => 'integer|exists:products,id',
             'created_by'      => 'required|exists:users,id',
-            'updated_by'      => 'nullable|exists:users,id',
+            'updated_by'      => 'nullable|exists:users,id'
         ]);
 
         // Check if any product is already inside an active promotion
@@ -70,7 +70,7 @@ class PromotionsController extends Controller
             'end_at'         => $request->end_at,
             'status_id'      => $request->status_id,
             'created_by'     => $request->created_by,
-            'updated_by'     => $request->updated_by ?? $request->created_by,
+            'updated_by'     => $request->updated_by ?? $request->created_by
         ]);
 
         if ($request->products) {
@@ -100,7 +100,7 @@ class PromotionsController extends Controller
             'products'        => 'nullable|array',
             'products.*'      => 'integer|exists:products,id',
             'created_by'      => 'sometimes|required|exists:users,id',
-            'updated_by'      => 'nullable|exists:users,id',
+            'updated_by'      => 'nullable|exists:users,id'
         ]);
 
         // If products are being changed, check conflicts
@@ -125,7 +125,7 @@ class PromotionsController extends Controller
             'discount_value' => $request->discount_value ?? $promotion->discount_value,
             'start_at'       => $request->start_at ?? $promotion->start_at,
             'end_at'         => $request->end_at ?? $promotion->end_at,
-            'updated_by'     => $request->updated_by ?? $promotion->updated_by,
+            'updated_by'     => $request->updated_by ?? $promotion->updated_by
         ]);
 
         if ($request->has('products')) {
@@ -176,7 +176,7 @@ class PromotionsController extends Controller
         if (!$product) {
             return response()->json([
                 'promotion_id'    => null,
-                'discount_amount' => 0,
+                'discount_amount' => 0
             ]);
         }
 
@@ -199,7 +199,7 @@ class PromotionsController extends Controller
             'promotion_id'    => $promotion ? $promotion->id : null,
             'discount_type'   => $promotion ? $promotion->discount_type : null,
             'discount_value'  => $promotion ? $promotion->discount_value : 0,
-            'discount_amount' => $discount_amount,
+            'discount_amount' => $discount_amount
         ]);
     }
 

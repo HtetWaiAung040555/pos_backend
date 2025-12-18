@@ -9,15 +9,16 @@ class StockTransaction extends Model
 {
     use HasFactory;
 
-    protected $table = 'stock_transactions';
-    protected $primaryKey = 'id';
+    protected $table = "stock_transactions";
+    protected $primaryKey = "id";
     protected $fillable = [
-        'inventory_id',
-        'reference_id',
-        'reference_type',
-        'quantity_change',
-        'type',
-        'created_by'
+        "inventory_id",
+        "reference_id",
+        "reference_type",
+        "quantity_change",
+        "reason",
+        "type",
+        "created_by",
     ];
 
     public function inventory()
@@ -27,7 +28,7 @@ class StockTransaction extends Model
 
     public function sale()
     {
-        return $this->belongsTo(Sale::class, 'reference_id');
+        return $this->belongsTo(Sale::class, "reference_id");
     }
 
     // public function purchase()
@@ -35,7 +36,8 @@ class StockTransaction extends Model
     //     return $this->belongsTo(Purchase::class, 'reference_id');
     // }
 
-    public function createdBy() { 
-        return $this->belongsTo(User::class, 'created_by'); 
+    public function createdBy()
+    {
+        return $this->belongsTo(User::class, "created_by");
     }
 }

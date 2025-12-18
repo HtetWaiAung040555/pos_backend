@@ -23,14 +23,14 @@ class PermissionsController extends Controller
             'name' => 'required|string|max:255',
             'action' => 'required|string|max:1000',
             'created_by' => 'required|exists:users,id',
-            'updated_by' => 'nullable|exists:users,id',
+            'updated_by' => 'nullable|exists:users,id'
         ]);
 
         $permission = Permission::create([
             'name' => $request->name,
             'action' => $request->action,
             'created_by' => $request->created_by,
-            'updated_by' => $request->updated_by ?? $request->created_by,
+            'updated_by' => $request->updated_by ?? $request->created_by
         ]);
 
         return new PermissionResource($permission->fresh(['createdBy', 'updatedBy', 'roles']));
@@ -51,7 +51,7 @@ class PermissionsController extends Controller
         $request->validate([
             'name' => 'sometimes|required|string|max:255',
             'action' => 'sometimes|required|string|max:1000',
-            'updated_by' => 'required|exists:users,id',
+            'updated_by' => 'required|exists:users,id'
         ]);
 
         $data = $request->only(['name', 'action', 'updated_by']);

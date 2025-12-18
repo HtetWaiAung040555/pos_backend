@@ -36,7 +36,7 @@ class ProductsController extends Controller
             'image'         => 'nullable|image|mimes:jpg,jpeg,png,gif|max:2048',
             'status_id'     => 'sometimes|required|exists:statuses,id',
             'created_by'    => 'sometimes|required|exists:users,id',
-            'updated_by'    => 'nullable|exists:users,id',
+            'updated_by'    => 'nullable|exists:users,id'
         ]);
 
         // Create product first (to get ID)
@@ -49,7 +49,7 @@ class ProductsController extends Controller
             'barcode'    => $request->barcode,
             'status_id'  => $request->status_id,
             'created_by' => $request->created_by,
-            'updated_by' => $request->updated_by ?? $request->created_by,
+            'updated_by' => $request->updated_by ?? $request->created_by
         ]);
 
         // Handle image upload
@@ -91,7 +91,7 @@ class ProductsController extends Controller
             'barcode'    => 'nullable|string|max:255',
             'image'      => 'nullable|image|mimes:jpg,jpeg,png,gif|max:2048',
             'status_id'  => 'sometimes|exists:statuses,id',
-            'updated_by' => 'nullable|exists:users,id',
+            'updated_by' => 'nullable|exists:users,id'
         ]);
 
         $data = $request->only(['name', 'unit', 'sec_prop', 'category_id', 'price', 'barcode', 'status_id', 'updated_by']);

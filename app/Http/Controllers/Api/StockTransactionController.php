@@ -12,43 +12,42 @@ class StockTransactionController extends Controller
     public function index(Request $request)
     {
         Log::info($request->all());
-        $query = StockTransaction::query()
-            ->with([
-                'inventory.product'
-            ]);
+        $query = StockTransaction::query()->with(["inventory.product"]);
 
         // 🔍 Filter by inventory
-        if ($request->filled('inventory_id')) {
-            $query->where('inventory_id', $request->inventory_id);
+        if ($request->filled("inventory_id")) {
+            $query->where("inventory_id", $request->inventory_id);
         }
 
         // 🔍 Filter by reference type
-        if ($request->filled('reference_type')) {
-            $query->where('reference_type', $request->reference_type);
+        if ($request->filled("reference_type")) {
+            $query->where("reference_type", $request->reference_type);
         }
 
         // 🔍 Filter by in / out
-        if ($request->filled('type')) {
-            $query->where('type', $request->type);
+        if ($request->filled("type")) {
+            $query->where("type", $request->type);
         }
 
         // 🔍 Search by reference_id
-        if ($request->filled('search')) {
-            $query->where('reference_id', 'like', '%' . $request->search . '%');
+        if ($request->filled("search")) {
+            $query->where("reference_id", "like", "%" . $request->search . "%");
         }
 
         // 📅 Date range filter
-        if ($request->filled('start_date') && $request->filled('end_date')) {
-            $query->whereBetween('created_at', [$request->start_date, $request->end_date]);
-        } elseif ($request->filled('start_date')) {
-            $query->whereDate('created_at', '>=', $request->start_date);
-        } elseif ($request->filled('end_date')) {
-            $query->whereDate('created_at', '<=', $request->end_date);
+        if ($request->filled("start_date") && $request->filled("end_date")) {
+            $query->whereBetween("created_at", [
+                $request->start_date,
+                $request->end_date,
+            ]);
+        } elseif ($request->filled("start_date")) {
+            $query->whereDate("created_at", ">=", $request->start_date);
+        } elseif ($request->filled("end_date")) {
+            $query->whereDate("created_at", "<=", $request->end_date);
         }
 
         // ⬇️ Latest first
-        $transactions = $query
-            ->orderBy('created_at', 'desc')->get();
+        $transactions = $query->orderBy("created_at", "desc")->get();
 
         return response()->json($transactions);
     }

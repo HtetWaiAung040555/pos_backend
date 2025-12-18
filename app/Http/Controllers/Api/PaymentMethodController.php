@@ -22,7 +22,7 @@ class PaymentMethodController extends Controller
             'status_id' => 'required|exists:statuses,id',
             'is_default' => 'boolean',
             'created_by' => 'required|exists:users,id',
-            'updated_by' => 'nullable|exists:users,id',
+            'updated_by' => 'nullable|exists:users,id'
         ]);
 
         $paymentMethod = PaymentMethod::create([
@@ -30,7 +30,7 @@ class PaymentMethodController extends Controller
             'status_id' => $request->status_id,
             'is_default' => $request->is_default ?? false,
             'created_by' => $request->created_by,
-            'updated_by' => $request->updated_by ?? $request->created_by,
+            'updated_by' => $request->updated_by ?? $request->created_by
         ]);
 
         return new PaymentMethodResource($paymentMethod->fresh(['status', 'createdBy', 'updatedBy']));
@@ -50,7 +50,7 @@ class PaymentMethodController extends Controller
             'name' => 'sometimes|required|string|max:255',
             'status_id' => 'sometimes|required|exists:statuses,id',
             'is_default' => 'boolean',
-            'updated_by' => 'nullable|exists:users,id',
+            'updated_by' => 'nullable|exists:users,id'
         ]);
 
         $data = $request->only(['name', 'status_id', 'is_default', 'updated_by']);

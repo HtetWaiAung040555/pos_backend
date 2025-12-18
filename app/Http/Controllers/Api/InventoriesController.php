@@ -27,7 +27,7 @@ class InventoriesController extends Controller
             'product_id' => 'required|exists:products,id',
             'warehouse_id'  => 'nullable|exists:warehouses,id',
             'created_by' => 'required|exists:users,id',
-            'updated_by' => 'nullable|exists:users,id',
+            'updated_by' => 'nullable|exists:users,id'
         ]);
 
         DB::beginTransaction();
@@ -71,7 +71,7 @@ class InventoriesController extends Controller
                     'expired_date'  => $request->expired_date,
                     'qty'          => $remainingQty,
                     'created_by'   => $request->created_by,
-                    'updated_by' => $request->updated_by ?? $request->created_by,
+                    'updated_by' => $request->updated_by ?? $request->created_by
                 ]);
 
                 StockTransaction::create([
@@ -127,7 +127,7 @@ class InventoriesController extends Controller
             $request->validate([
                 'qty'           => 'sometimes|required|integer',
                 'expired_date'  => 'sometimes|nullable|date',
-                'updated_by'    => 'required|exists:users,id',
+                'updated_by'    => 'required|exists:users,id'
             ]);
 
             $hasOutTransaction = StockTransaction::where('inventory_id', $inventory->id)->where('type', 'out')->exists();
@@ -141,7 +141,7 @@ class InventoriesController extends Controller
             $inventory->update([
                 'name'          => $request->name ?? $inventory->name,
                 'expired_date'  => $request->expired_date ?? $inventory->expired_date,
-                'updated_by'    => $request->updated_by,
+                'updated_by'    => $request->updated_by
             ]);
 
             if ($request->has('qty')) {
@@ -158,7 +158,7 @@ class InventoriesController extends Controller
                         'reference_type'  => 'opening_adjustment',
                         'quantity_change' => abs($diff),
                         'type'            => $diff > 0 ? 'in' : 'out',
-                        'created_by'      => $request->updated_by,
+                        'created_by'      => $request->updated_by
                     ]);
                 }
             }
@@ -181,7 +181,7 @@ class InventoriesController extends Controller
     public function destroy(Request $request, string $id)
     {
         $request->validate([
-            'void_by' => 'required|exists:users,id',
+            'void_by' => 'required|exists:users,id'
         ]);
 
         DB::beginTransaction();
@@ -216,7 +216,7 @@ class InventoriesController extends Controller
                     'reference_type'  => 'opening_void',
                     'quantity_change' => abs($inventory->qty),
                     'type'            => $inventory->qty > 0 ? 'out' : 'in',
-                    'created_by'      => $request->void_by,
+                    'created_by'      => $request->void_by
                 ]);
 
                 $inventory->qty = 0;
@@ -252,7 +252,7 @@ class InventoriesController extends Controller
             'inventory_id' => 'required|exists:inventories,id',
             'qty'          => 'required|integer|not_in:0',
             'reason'       => 'nullable|string|max:255',
-            'created_by'   => 'required|exists:users,id',
+            'created_by'   => 'required|exists:users,id'
         ]);
 
         DB::beginTransaction();
@@ -272,7 +272,7 @@ class InventoriesController extends Controller
                 'quantity_change' => $request->qty,
                 'reason'          => $request->reason,
                 'type'            => $request->qty > 0 ? 'in' : 'out',
-                'created_by'      => $request->created_by,
+                'created_by'      => $request->created_by
             ]);
 
             DB::commit();

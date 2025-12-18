@@ -25,7 +25,7 @@ class CustomersController extends Controller
             'status_id' => 'required|exists:statuses,id',
             'is_default' => 'boolean',
             'created_by' => 'required|exists:users,id',
-            'updated_by' => 'nullable|exists:users,id',
+            'updated_by' => 'nullable|exists:users,id'
         ]);
 
         $customer = Customer::create([
@@ -37,7 +37,7 @@ class CustomersController extends Controller
             'is_default' => $request->is_default ?? false,
             'balance' => $request->balance ?? 0,
             'created_by' => $request->created_by,
-            'updated_by' => $request->updated_by ?? $request->created_by,
+            'updated_by' => $request->updated_by ?? $request->created_by
         ]);
 
         return new CustomerResource($customer->fresh(['status', 'createdBy', 'updatedBy']));
@@ -59,7 +59,7 @@ class CustomersController extends Controller
             'address' => 'sometimes|string|max:255',
             'status_id' => 'sometimes|required|exists:statuses,id',
             'is_default' => 'sometimes|boolean',
-            'updated_by' => 'nullable|exists:users,id',
+            'updated_by' => 'nullable|exists:users,id'
         ]);
 
         $data = $request->only(['name', 'phone', 'address', 'status_id', 'is_default', 'updated_by']);

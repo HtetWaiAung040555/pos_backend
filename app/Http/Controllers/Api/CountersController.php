@@ -23,7 +23,7 @@ class CountersController extends Controller
             'branch_id' => 'required|exists:branches,id',
             'status_id' => 'required|exists:statuses,id',
             'created_by' => 'required|exists:users,id',
-            'updated_by' => 'nullable|exists:users,id',
+            'updated_by' => 'nullable|exists:users,id'
         ]);
 
         $counter = Counter::create([
@@ -53,7 +53,7 @@ class CountersController extends Controller
             'desc' => 'nullable|string|max:1000',
             'branch_id' => 'sometimes|required|exists:branches,id',
             'status_id' => 'sometimes|required|exists:statuses,id',
-            'updated_by' => 'nullable|exists:users,id',
+            'updated_by' => 'nullable|exists:users,id'
         ]);
 
         $data = $request->only(['name', 'desc', 'branch_id', 'status_id', 'updated_by']);

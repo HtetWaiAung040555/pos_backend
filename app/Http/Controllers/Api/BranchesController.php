@@ -26,7 +26,7 @@ class BranchesController extends Controller
             'warehouse_id' => 'required|exists:warehouses,id',
             'status_id' => 'required|exists:statuses,id',
             'created_by' => 'required|exists:users,id',
-            'updated_by' => 'nullable|exists:users,id',
+            'updated_by' => 'nullable|exists:users,id'
         ]);
     
         $branch = Branch::create([
@@ -36,7 +36,7 @@ class BranchesController extends Controller
             'warehouse_id' => $request->warehouse_id,
             'status_id' => $request->status_id,
             'created_by' => $request->created_by,
-            'updated_by' => $request->updated_by ?? $request->created_by,
+            'updated_by' => $request->updated_by ?? $request->created_by
         ]);
     
         return new BranchResource($branch->fresh(['warehouse', 'status', 'createdBy', 'updatedBy']));
@@ -60,7 +60,7 @@ class BranchesController extends Controller
             'location' => 'sometimes|required|string|max:255',
             'warehouse_id' => 'sometimes|exists:warehouses,id',
             'status_id' => 'sometimes|required|exists:statuses,id',
-            'updated_by' => 'nullable|exists:users,id',
+            'updated_by' => 'nullable|exists:users,id'
         ]);
 
         $data = $request->only(['name', 'phone', 'location', 'warehouse_id', 'status_id', 'updated_by']);

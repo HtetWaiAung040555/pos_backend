@@ -21,14 +21,14 @@ class CategoriesController extends Controller
             'name' => 'required|string|max:255',
             'status_id' => 'required|exists:statuses,id',
             'created_by' => 'required|exists:users,id',
-            'updated_by' => 'nullable|exists:users,id',
+            'updated_by' => 'nullable|exists:users,id'
         ]);
 
         $category = Category::create([
             'name' => $request->name,
             'status_id' => $request->status_id,
             'created_by' => $request->created_by,
-            'updated_by' => $request->updated_by ?? $request->created_by,
+            'updated_by' => $request->updated_by ?? $request->created_by
         ]);
 
         return new CategoryResource($category->fresh(['status', 'createdBy', 'updatedBy']));
@@ -47,7 +47,7 @@ class CategoriesController extends Controller
         $request->validate([
             'name' => 'sometimes|required|string|max:255',
             'status_id' => 'sometimes|required|exists:statuses,id',
-            'updated_by' => 'nullable|exists:users,id',
+            'updated_by' => 'nullable|exists:users,id'
         ]);
 
         $data = $request->only(['name', 'status_id', 'updated_by']);

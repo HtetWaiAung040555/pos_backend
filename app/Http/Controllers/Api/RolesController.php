@@ -28,7 +28,7 @@ class RolesController extends Controller
             'created_by' => 'required|exists:users,id',
             'updated_by' => 'nullable|exists:users,id',
             'permissions' => 'array',
-            'permissions.*' => 'exists:permissions,id',
+            'permissions.*' => 'exists:permissions,id'
         ]);
 
         $role = Role::create([
@@ -36,7 +36,7 @@ class RolesController extends Controller
             'desc' => $request->desc,
             'status_id' => $request->status_id,
             'created_by' => $request->created_by,
-            'updated_by' => $request->updated_by ?? $request->created_by,
+            'updated_by' => $request->updated_by ?? $request->created_by
         ]);
 
         if ($request->has('permissions')) {
@@ -64,7 +64,7 @@ class RolesController extends Controller
             'status_id' => 'sometimes|required|exists:statuses,id',
             'updated_by' => 'nullable|exists:users,id',
             'permissions' => 'sometimes|array',
-            'permissions.*' => 'exists:permissions,id',
+            'permissions.*' => 'exists:permissions,id'
         ]);
 
         $data = $request->only(['name', 'desc', 'status_id', 'updated_by']);

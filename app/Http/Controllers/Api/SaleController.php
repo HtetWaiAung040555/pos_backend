@@ -58,7 +58,7 @@ class SaleController extends Controller
             'warehouse_id' => 'required|exists:inventories,warehouse_id',
             'products' => 'required|array|min:1',
             'products.*.product_id' => 'required|exists:products,id',
-            'products.*.quantity' => 'required|integer|min:1',
+            'products.*.quantity' => 'required|integer|min:1'
         ]);
 
         Log::info($request->all());
@@ -90,7 +90,7 @@ class SaleController extends Controller
                 'remark' => $request->remark ?? null,
                 'sale_date' => $request->sale_date ?? now(),
                 'created_by' => $request->created_by,
-                'updated_by' => $request->updated_by ?? $request->created_by,
+                'updated_by' => $request->updated_by ?? $request->created_by
             ]);
 
             // 4. Create Sale Details and Stock Transactions
@@ -110,7 +110,7 @@ class SaleController extends Controller
                     'discount_amount' => $item['discount_amount'] ?? 0,
                     'discount_price' => $item['discount_price'] ?? 0,
                     'promotion_id' => $item['promotion_id'] ?? null,
-                    'total' => $finalPrice * $item['quantity'],
+                    'total' => $finalPrice * $item['quantity']
                 ]);
 
                 $remainingQty = $item['quantity'];
@@ -229,7 +229,7 @@ class SaleController extends Controller
             'status_id' => 'sometimes|required|exists:statuses,id',
             'remark' => 'nullable|string|max:1000',
             'sale_date' => 'sometimes|date',
-            'updated_by' => 'nullable|exists:users,id',
+            'updated_by' => 'nullable|exists:users,id'
         ]);
 
         $sale = Sale::with('status')->findOrFail($id); // Load sale with status relation
@@ -244,7 +244,7 @@ class SaleController extends Controller
                 'status_id' => $request->status_id,
                 'remark' => $request->remark,
                 'sale_date' => $request->sale_date,
-                'updated_by' => $request->updated_by,
+                'updated_by' => $request->updated_by
             ]);
 
 

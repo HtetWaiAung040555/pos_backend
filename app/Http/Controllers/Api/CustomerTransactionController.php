@@ -14,14 +14,19 @@ class CustomerTransactionController extends Controller
 {
     public function index(Request $request)
     {
-        $query = CustomerTransaction::with(['customer', 'paymentMethod', 'createdBy', 'updatedBy']);
+        $query = CustomerTransaction::with([
+            "customer",
+            "paymentMethod",
+            "createdBy",
+            "updatedBy",
+        ]);
 
-        if ($request->filled('customer_id')) {
-            $query->where('customer_id', $request->customer_id);
+        if ($request->filled("customer_id")) {
+            $query->where("customer_id", $request->customer_id);
         }
 
         return CustomerTransactionResource::collection(
-            $query->orderBy('id', 'desc')->get()
+            $query->orderBy("id", "desc")->get(),
         );
     }
 
@@ -30,29 +35,28 @@ class CustomerTransactionController extends Controller
         Log::info($request->all());
 
         $request->validate([
-            'customer_id' => 'required|exists:customers,id',
-            'amount' => 'required|numeric|min:0',
-            'payment_id' => 'nullable|exists:payment_methods,id',
-            'remark' => 'nullable|string|max:2000',
-            'pay_date' => 'required|date',
-            'created_by' => 'required|exists:users,id',
-            'updated_by' => 'nullable|exists:users,id',
+            "customer_id" => "required|exists:customers,id",
+            "amount" => "required|numeric|min:0",
+            "payment_id" => "nullable|exists:payment_methods,id",
+            "remark" => "nullable|string|max:2000",
+            "pay_date" => "required|date",
+            "created_by" => "required|exists:users,id",
+            "updated_by" => "nullable|exists:users,id",
         ]);
 
         DB::beginTransaction();
         try {
             $transaction = CustomerTransaction::create([
-                'customer_id' => $request->customer_id,
-                'type' => 'top-up',
-                'amount' => $request->amount,
-                'payment_id' => $request->payment_id,
-                'status_id' => 7,
-                'remark' => $request->remark,
-                'pay_date' => $request->pay_date,
-                'created_by' => $request->created_by,
-                'updated_by' => $request->updated_by ?? $request->created_by,
+                "customer_id" => $request->customer_id,
+                "type" => "top-up",
+                "amount" => $request->amount,
+                "payment_id" => $request->payment_id,
+                "status_id" => 7,
+                "remark" => $request->remark,
+                "pay_date" => $request->pay_date,
+                "created_by" => $request->created_by,
+                "updated_by" => $request->updated_by ?? $request->created_by,
             ]);
-
 
             $customer = Customer::findOrFail($transaction->customer_id);
 
@@ -62,24 +66,36 @@ class CustomerTransactionController extends Controller
             DB::commit();
 
             return new CustomerTransactionResource(
-                $transaction->load(['customer', 'paymentMethod', 'createdBy', 'updatedBy'])
+                $transaction->load([
+                    "customer",
+                    "paymentMethod",
+                    "createdBy",
+                    "updatedBy",
+                ]),
             );
 
             Log::info($request);
-
         } catch (\Exception $e) {
             DB::rollBack();
-            return response()->json([
-                'error' => 'Failed to create balance transaction',
-                'details' => $e->getMessage()
-            ], 500);
+            return response()->json(
+                [
+                    "error" => "Failed to create balance transaction",
+                    "details" => $e->getMessage(),
+                ],
+                500,
+            );
         }
     }
 
     public function show($id)
     {
-        $transaction = CustomerTransaction::with(['customer', 'paymentMethod', 'createdBy', 'updatedBy'])
-            ->where('type', 'top-up')
+        $transaction = CustomerTransaction::with([
+            "customer",
+            "paymentMethod",
+            "createdBy",
+            "updatedBy",
+        ])
+            ->where("type", "top-up")
             ->findOrFail($id);
 
         return new CustomerTransactionResource($transaction);
@@ -88,15 +104,17 @@ class CustomerTransactionController extends Controller
     public function update(Request $request, $id)
     {
         $request->validate([
-            'customer_id' => 'sometimes',
-            'amount' => 'sometimes|numeric|min:0',
-            'payment_id' => 'sometimes|exists:payment_methods,id',
-            'remark' => 'nullable|string|max:2000',
-            'pay_date' => 'sometimes|date',
-            'updated_by' => 'required|exists:users,id',
+            "customer_id" => "sometimes",
+            "amount" => "sometimes|numeric|min:0",
+            "payment_id" => "sometimes|exists:payment_methods,id",
+            "remark" => "nullable|string|max:2000",
+            "pay_date" => "sometimes|date",
+            "updated_by" => "required|exists:users,id",
         ]);
 
-        $transaction = CustomerTransaction::where('type', 'top-up')->findOrFail($id);
+        $transaction = CustomerTransaction::where("type", "top-up")->findOrFail(
+            $id,
+        );
 
         $oldCustomer = Customer::findOrFail($transaction->customer_id);
 
@@ -107,7 +125,15 @@ class CustomerTransactionController extends Controller
 
         DB::beginTransaction();
         try {
-            $transaction->fill($request->only(['customer_id','amount','payment_id','remark','pay_date']));
+            $transaction->fill(
+                $request->only([
+                    "customer_id",
+                    "amount",
+                    "payment_id",
+                    "remark",
+                    "pay_date",
+                ]),
+            );
             $transaction->updated_by = $request->updated_by;
             $transaction->save();
 
@@ -121,21 +147,30 @@ class CustomerTransactionController extends Controller
             DB::commit();
 
             return new CustomerTransactionResource(
-                $transaction->load(['customer', 'paymentMethod', 'createdBy', 'updatedBy'])
+                $transaction->load([
+                    "customer",
+                    "paymentMethod",
+                    "createdBy",
+                    "updatedBy",
+                ]),
             );
-
         } catch (\Exception $e) {
             DB::rollBack();
-            return response()->json([
-                'error' => 'Failed to update balance transaction',
-                'details' => $e->getMessage()
-            ], 500);
+            return response()->json(
+                [
+                    "error" => "Failed to update balance transaction",
+                    "details" => $e->getMessage(),
+                ],
+                500,
+            );
         }
     }
 
     public function destroy($id)
     {
-        $transaction = CustomerTransaction::where('type', 'top-up')->findOrFail($id);
+        $transaction = CustomerTransaction::where("type", "top-up")->findOrFail(
+            $id,
+        );
         $customerId = $transaction->customer_id;
 
         DB::beginTransaction();
@@ -147,14 +182,18 @@ class CustomerTransactionController extends Controller
 
             DB::commit();
 
-            return response()->json(['message' => 'Balance transaction deleted successfully']);
-
+            return response()->json([
+                "message" => "Balance transaction deleted successfully",
+            ]);
         } catch (\Exception $e) {
             DB::rollBack();
-            return response()->json([
-                'error' => 'Cannot delete balance transaction',
-                'details' => $e->getMessage()
-            ], 400);
+            return response()->json(
+                [
+                    "error" => "Cannot delete balance transaction",
+                    "details" => $e->getMessage(),
+                ],
+                400,
+            );
         }
     }
 
