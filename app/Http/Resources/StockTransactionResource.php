@@ -16,8 +16,25 @@ class StockTransactionResource extends JsonResource
                 "id" => $this->inventory?->id,
                 "name" => $this->inventory?->name,
                 "qty" => $this->inventory?->qty,
-                "product_id" => $this->inventory?->product_id,
-                "warehouse_id" => $this->inventory?->warehouse_id,
+                "product" => $this->inventory?->product
+                    ? [
+                        "id" => $this->inventory->product->id,
+                        "name" => $this->inventory->product->name,
+                        "unit" => $this->inventory->product->unit,
+                        "price" => $this->inventory->product->price,
+                        "barcode" => $this->inventory->product->barcode,
+                        "image_url" => $this->inventory->product->image
+                            ? asset($this->inventory->product->image)
+                            : null,
+                    ]
+                    : null,
+
+                "warehouse" => $this->inventory?->warehouse
+                    ? [
+                        "id" => $this->inventory->warehouse->id,
+                        "name" => $this->inventory->warehouse->name,
+                    ]
+                    : null,
             ],
 
             "reference_id" => $this->reference_id,
@@ -30,7 +47,7 @@ class StockTransactionResource extends JsonResource
                 "id" => $this->createdBy?->id,
                 "name" => $this->createdBy?->name,
             ],
-            
+
             "created_at" => $this->created_at->toDateTimeString(),
         ];
     }
