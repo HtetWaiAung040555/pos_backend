@@ -49,7 +49,7 @@ class StockTransactionController extends Controller
         // ⬇️ Latest first
         $transactions = $query->orderBy("created_at", "desc")->get();
 
-        return response()->json($transactions);
+        return StockTransactionResource::collection($transactions);
     }
 
     public function store(Request $request)
