@@ -50,7 +50,7 @@ class SaleReturn extends Model
         });
     }
 
-    public function sales(){
+    public function sale(){
         return $this->belongsTo(Sale::class);
     }
 

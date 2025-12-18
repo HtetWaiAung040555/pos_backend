@@ -43,14 +43,14 @@ class SaleReturnController extends Controller
         }
 
         if ($request->filled("start_date") && $request->filled("end_date")) {
-            $query->whereBetween("sale_date", [
+            $query->whereBetween("return_date", [
                 $request->start_date,
                 $request->end_date,
             ]);
         } elseif ($request->filled("start_date")) {
-            $query->whereDate("sale_date", ">=", $request->start_date);
+            $query->whereDate("return_date", ">=", $request->start_date);
         } elseif ($request->filled("end_date")) {
-            $query->whereDate("sale_date", "<=", $request->end_date);
+            $query->whereDate("return_date", "<=", $request->end_date);
         }
 
         return SaleReturnResource::collection($query->get());
@@ -58,7 +58,6 @@ class SaleReturnController extends Controller
 
     public function store(Request $request)
     {
-        Log::info("Before: ", $request->all());
         $request->validate([
             "sale_id" => "required|exists:sales,id",
             "warehouse_id" => "required|exists:warehouses,id",
@@ -73,7 +72,7 @@ class SaleReturnController extends Controller
             "products.*.quantity" => "required|integer|min:1",
         ]);
 
-        // Log::info("Data", $request->all());
+        Log::info("Data", $request->all());
 
         DB::beginTransaction();
 
@@ -89,6 +88,8 @@ class SaleReturnController extends Controller
                     "sale" => "Only confirmed sales can be returned",
                 ]);
             }
+
+            Log::info("sales", $sale->toArray());
 
             // 3️⃣ Create Sale Return (header)
             $saleReturn = SaleReturn::create([
@@ -132,7 +133,7 @@ class SaleReturnController extends Controller
                 }
 
                 // Calculate line total
-                $lineTotal = $item["quantity"] * $saleDetail->price;
+                $lineTotal = $item["quantity"] * ($saleDetail->discount_price > 0 ? $saleDetail->discount_price : $saleDetail->price);
 
                 Log::info($saleReturn);
 
@@ -142,7 +143,7 @@ class SaleReturnController extends Controller
                     "sale_detail_id" => $saleDetail->id,
                     "product_id" => $saleDetail->product_id,
                     "quantity" => $item["quantity"],
-                    "price" => $saleDetail->price,
+                    "price" => $saleDetail->discount_price > 0 ? $saleDetail->discount_price : $saleDetail->price,
                     "total" => $lineTotal,
                 ]);
 
@@ -158,6 +159,8 @@ class SaleReturnController extends Controller
                     ->orderBy("created_at")
                     ->lockForUpdate()
                     ->get();
+                
+                Log::info("inventories", $inventories->toArray());
 
                 foreach ($inventories as $inventory) {
                     if ($remainingQty <= 0) {
@@ -444,6 +447,7 @@ class SaleReturnController extends Controller
                 "remark" => $request->remark,
                 "return_date" =>
                     $request->return_date ?? $saleReturn->return_date,
+                "payment_id" => $request->payment_id,
                 "total_amount" => $totalReturnAmount,
                 "updated_by" => $request->updated_by,
             ]);

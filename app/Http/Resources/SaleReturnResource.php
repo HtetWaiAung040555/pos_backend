@@ -11,9 +11,11 @@ class SaleReturnResource extends JsonResource
     {
         return [
             'id' => $this->id,
-
-            'sale' => [
+            
+            'sales' => [
                 'id' => $this->sale->id ?? null,
+                'total_amount' => $this->sale->total_amount ?? null,
+                'sale_date' => $this->sale->sale_date ?? null,
             ],
 
             'warehouse' => [

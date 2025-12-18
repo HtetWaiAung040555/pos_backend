@@ -15,6 +15,7 @@ class SaleDetailResource extends JsonResource
                 'name' => $this->product->name ?? null,
                 'price' => $this->price,
             ],
+            'price' => $this->price,
             'quantity' => $this->quantity,
             'discount_price' => $this->discount_price,
             'discount_amount' => $this->discount_amount,
