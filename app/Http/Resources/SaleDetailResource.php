@@ -10,6 +10,7 @@ class SaleDetailResource extends JsonResource
     {
         return [
             'id' => $this->id,
+            'inventory_id' => $this->inventory_id, 
             'product' => [
                 'id' => $this->product->id ?? null,
                 'name' => $this->product->name ?? null,

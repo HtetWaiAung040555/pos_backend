@@ -159,8 +159,6 @@ class SaleReturnController extends Controller
                     ->orderBy("created_at")
                     ->lockForUpdate()
                     ->get();
-                
-                Log::info("inventories", $inventories->toArray());
 
                 foreach ($inventories as $inventory) {
                     if ($remainingQty <= 0) {

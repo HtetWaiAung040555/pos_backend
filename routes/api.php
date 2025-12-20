@@ -18,8 +18,7 @@ use App\Http\Controllers\Api\CustomerTransactionController;
 use App\Http\Controllers\Api\PromotionsController;
 use App\Http\Controllers\Api\SaleReturnController;
 use App\Http\Controllers\Api\StockTransactionController;
-use App\Models\Inventory;
-// use App\Http\Controllers\Api\RolesController;
+use App\Http\Controllers\Api\SuppliersController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
@@ -78,6 +77,8 @@ Route::middleware(['auth:sanctum'])->group(function () {
 
     Route::get('/customers/last-id', [CustomersController::class, 'getLastId']);
     Route::apiResource('/customers', CustomersController::class);
+
+    Route::apiResource('/suppliers', SuppliersController::class);
 
     Route::apiResource('/sales', SaleController::class);
 

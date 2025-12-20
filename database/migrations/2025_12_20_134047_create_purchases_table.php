@@ -8,18 +8,16 @@ return new class extends Migration
 {
     public function up(): void
     {
-        Schema::create('sales', function (Blueprint $table) {
+        Schema::create('purchases', function (Blueprint $table) {
             $table->string('id')->primary();
             $table->foreignId('warehouse_id')->constrained('warehouses')->restrictOnDelete();
-            $table->string('customer_id');
-            $table->foreign('customer_id')->references('id')->on('customers')->restrictOnDelete();
+            $table->string('supplier_id');
+            $table->foreign('supplier_id')->references('id')->on('suppliers')->restrictOnDelete();
             $table->decimal('total_amount',11,2);
-            $table->decimal('paid_amount',11,2);
-            $table->decimal('due_amount',11,2);
             $table->foreignId('payment_id')->constrained('payment_methods')->restrictOnDelete();
             $table->foreignId('status_id')->constrained('statuses')->restrictOnDelete();
             $table->text('remark')->nullable();
-            $table->dateTime('sale_date');
+            $table->dateTime('purchase_date');
             $table->unsignedBigInteger('created_by');
             $table->unsignedBigInteger('updated_by');
             $table->unsignedBigInteger('void_by')->nullable();
@@ -31,6 +29,6 @@ return new class extends Migration
 
     public function down(): void
     {
-        Schema::dropIfExists('sales');
+        Schema::dropIfExists('purchases');
     }
 };

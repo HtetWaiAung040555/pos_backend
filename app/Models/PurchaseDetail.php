@@ -5,27 +5,19 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
-class SaleDetail extends Model
+class PurchaseDetail extends Model
 {
     use HasFactory;
 
-    protected $table = 'sale_details';
+    protected $table = 'purchase_details';
     protected $primaryKey = 'id';
     protected $fillable = [
-        'sale_id',
-        'inventory_id',
+        'purchase_id',
         'product_id',
         'quantity',
         'price',
-        'discount_amount',
-        'discount_price',
-        'total',
-        'promotion_id',
+        'total'
     ];
-
-    public function inventory(){
-        return $this->belongsTo(Inventory::class);
-    }
 
     public function sale()
     {
@@ -41,5 +33,4 @@ class SaleDetail extends Model
     {
         return $this->belongsTo(Promotion::class);
     }
-
 }

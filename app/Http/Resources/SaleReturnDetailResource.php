@@ -14,6 +14,7 @@ class SaleReturnDetailResource extends JsonResource
             'sale_detail_id' => $this->sale_detail_id,
             'sales_detail' => [
                 'id' => $this->saleDetail->id ?? null,
+                'inventory_id' => $this->saleDetail->inventory_id ?? null,
                 'price' => $this->saleDetail->price ?? null,
                 'quantity' => $this->saleDetail->quantity ?? null,
                 'total' => $this->saleDetail->total ?? null,

@@ -45,8 +45,8 @@ class SaleController extends Controller
 
     public function store(Request $request)
     {
+
         $request->validate([
-            'warehouse_id' => 'required|exists:warehouses,id',
             'customer_id' => 'required|exists:customers,id',
             'payment_id' => 'required|exists:payment_methods,id',
             'paid_amount' => 'nullable|numeric|min:0',
@@ -55,13 +55,11 @@ class SaleController extends Controller
             'created_by' => 'required|exists:users,id',
             'updated_by' => 'nullable|exists:users,id',
             'sale_date' => 'nullable|date',
-            'warehouse_id' => 'required|exists:inventories,warehouse_id',
+            'warehouse_id' => 'required|exists:warehouses,id',
             'products' => 'required|array|min:1',
             'products.*.product_id' => 'required|exists:products,id',
             'products.*.quantity' => 'required|integer|min:1'
         ]);
-
-        Log::info($request->all());
 
         DB::beginTransaction();
         try {
@@ -102,17 +100,6 @@ class SaleController extends Controller
                     $finalPrice = $product->price - $item['discount_amount'];
                 }
 
-                SaleDetail::create([
-                    'sale_id' => $sale->id,
-                    'product_id' => $product->id,
-                    'quantity' => $item['quantity'],
-                    'price' => $product->price,
-                    'discount_amount' => $item['discount_amount'] ?? 0,
-                    'discount_price' => $item['discount_price'] ?? 0,
-                    'promotion_id' => $item['promotion_id'] ?? null,
-                    'total' => $finalPrice * $item['quantity']
-                ]);
-
                 $remainingQty = $item['quantity'];
 
                 // 1️⃣ Get available stock (expiry first, non-expiry later)
@@ -138,6 +125,18 @@ class SaleController extends Controller
                     $inventory->qty -= $deductQty;
                     $inventory->updated_by = $request->created_by;
                     $inventory->save();
+
+                    SaleDetail::create([
+                        'sale_id' => $sale->id,
+                        'inventory_id' => $inventory->id,
+                        'product_id' => $product->id,
+                        'quantity' => $item['quantity'],
+                        'price' => $product->price,
+                        'discount_amount' => $item['discount_amount'] ?? 0,
+                        'discount_price' => $item['discount_price'] ?? 0,
+                        'promotion_id' => $item['promotion_id'] ?? null,
+                        'total' => $finalPrice * $item['quantity']
+                    ]);
     
                     StockTransaction::create([
                         'inventory_id'    => $inventory->id,
@@ -148,7 +147,7 @@ class SaleController extends Controller
                         'created_by'      => $request->created_by,
                         'updated_by'      => $request->updated_by ?? $request->created_by
                     ]);
-    
+
                     $remainingQty -= $deductQty;
                 }
     
@@ -170,6 +169,18 @@ class SaleController extends Controller
                     $negativeInventory->qty -= $remainingQty;
                     $negativeInventory->updated_by = $request->created_by;
                     $negativeInventory->save();
+
+                    SaleDetail::create([
+                        'sale_id' => $sale->id,
+                        'inventory_id' => $negativeInventory->id,
+                        'product_id' => $product->id,
+                        'quantity' => $item['quantity'],
+                        'price' => $product->price,
+                        'discount_amount' => $item['discount_amount'] ?? 0,
+                        'discount_price' => $item['discount_price'] ?? 0,
+                        'promotion_id' => $item['promotion_id'] ?? null,
+                        'total' => $finalPrice * $item['quantity']
+                    ]);
     
                     StockTransaction::create([
                         'inventory_id'    => $negativeInventory->id,
@@ -305,14 +316,17 @@ class SaleController extends Controller
             $sale->void_by = $request->void_by;
             $sale->save();
 
+            Log::info($sale->toArray());
+
             // 2. Restore stock to inventory
             foreach ($sale->details as $detail) {
 
-                $inventory = Inventory::where('product_id', $detail->product_id)
-                                    ->where('warehouse_id', $sale->warehouse_id)
-                                    ->first();
+                $inventory = Inventory::find($detail->inventory_id);
 
-                if ($inventory) $inventory->increment('qty', $detail->quantity);
+                if ($inventory) {
+                    $inventory->qty += $detail->quantity;
+                    $inventory->save();
+                }
 
                 // 3. Insert stock transaction
                 StockTransaction::create([

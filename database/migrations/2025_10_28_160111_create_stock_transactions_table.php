@@ -18,10 +18,11 @@ return new class extends Migration
                     'opening',
                     'opening_adjustment',
                     'adjustment',
-                    'sale_return',
-                    'sale_return_update',
+                    'purchase_void',
                     'opening_void',
                     'sale_void',
+                    'sale_return',
+                    'sale_return_update',
                     'sale_return_void'
                 ])->nullable();
             $table->integer('quantity_change');
