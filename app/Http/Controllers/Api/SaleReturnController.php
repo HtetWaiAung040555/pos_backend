@@ -150,56 +150,73 @@ class SaleReturnController extends Controller
                 // 6️⃣ FIFO stock IN (negative first)
                 $remainingQty = $item["quantity"];
 
-                $inventories = Inventory::where(
-                    "product_id",
-                    $saleDetail->product_id,
-                )
-                    ->where("warehouse_id", $sale->warehouse_id)
-                    ->where("qty", "<", 0)
-                    ->orderBy("created_at")
-                    ->lockForUpdate()
-                    ->get();
+                $inventory = Inventory::find($saleDetail->inventory_id);
 
-                foreach ($inventories as $inventory) {
-                    if ($remainingQty <= 0) {
-                        break;
-                    }
-
-                    $offsetQty = min(abs($inventory->qty), $remainingQty);
-
-                    $inventory->qty += $offsetQty;
+                if ($inventory) {
+                    $inventory->qty += $item["quantity"];
                     $inventory->save();
-
-                    StockTransaction::create([
-                        "inventory_id" => $inventory->id,
-                        "reference_id" => $saleReturn->id,
-                        "reference_type" => "sale_return",
-                        "quantity_change" => $offsetQty,
-                        "type" => "in",
-                        "created_by" => $request->created_by,
-                    ]);
-
-                    $remainingQty -= $offsetQty;
                 }
 
-                if ($remainingQty > 0) {
-                    $inventory = Inventory::create([
-                        "product_id" => $saleDetail->product_id,
-                        "warehouse_id" => $sale->warehouse_id,
-                        "qty" => $remainingQty,
-                        "created_by" => $request->created_by,
-                        "updated_by" => $request->created_by,
-                    ]);
+                // 3. Insert stock transaction
+                StockTransaction::create([
+                    'inventory_id' => $inventory->id ?? null,
+                    'reference_d' => $saleReturn->id,
+                    'reference_type' => 'sale_return',
+                    'quantity_change' => $item["quantity"],
+                    'type' => 'in',
+                    "created_by" => $request->created_by
+                ]);
 
-                    StockTransaction::create([
-                        "inventory_id" => $inventory->id,
-                        "reference_id" => $saleReturn->id,
-                        "reference_type" => "sale_return",
-                        "quantity_change" => $remainingQty,
-                        "type" => "in",
-                        "created_by" => $request->created_by,
-                    ]);
-                }
+                // $inventories = Inventory::where(
+                //     "product_id",
+                //     $saleDetail->product_id,
+                // )
+                //     ->where("warehouse_id", $sale->warehouse_id)
+                //     ->where("qty", "<", 0)
+                //     ->orderBy("created_at")
+                //     ->lockForUpdate()
+                //     ->get();
+
+                // foreach ($inventories as $inventory) {
+                //     if ($remainingQty <= 0) {
+                //         break;
+                //     }
+
+                //     $offsetQty = min(abs($inventory->qty), $remainingQty);
+
+                //     $inventory->qty += $offsetQty;
+                //     $inventory->save();
+
+                //     StockTransaction::create([
+                //         "inventory_id" => $inventory->id,
+                //         "reference_id" => $saleReturn->id,
+                //         "reference_type" => "sale_return",
+                //         "quantity_change" => $offsetQty,
+                //         "type" => "in",
+                //         "created_by" => $request->created_by,
+                //     ]);
+
+                //     $remainingQty -= $offsetQty;
+                // }
+
+                // if ($remainingQty > 0) {
+                //     $inventory = Inventory::create([
+                //         "product_id" => $saleDetail->product_id,
+                //         "warehouse_id" => $sale->warehouse_id,
+                //         "qty" => $remainingQty,
+                //         "created_by" => $request->created_by,
+                //         "updated_by" => $request->created_by,
+                //     ]);
+
+                //     StockTransaction::create([
+                //         "inventory_id" => $inventory->id,
+                //         "reference_id" => $saleReturn->id,
+                //         "reference_type" => "sale_return",
+                //         "quantity_change" => $remainingQty,
+                //         "type" => "in",
+                //         "created_by" => $request->created_by,
+                //     ]);
+                // }
 
                 $totalReturnAmount += $lineTotal;
             }
