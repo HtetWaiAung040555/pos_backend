@@ -72,8 +72,6 @@ class SaleReturnController extends Controller
             "products.*.quantity" => "required|integer|min:1",
         ]);
 
-        Log::info("Data", $request->all());
-
         DB::beginTransaction();
 
         try {
@@ -88,8 +86,6 @@ class SaleReturnController extends Controller
                     "sale" => "Only confirmed sales can be returned",
                 ]);
             }
-
-            Log::info("sales", $sale->toArray());
 
             // 3️⃣ Create Sale Return (header)
             $saleReturn = SaleReturn::create([
@@ -110,15 +106,10 @@ class SaleReturnController extends Controller
             // 4️⃣ Loop return products
             foreach ($request->products as $item) {
                 // Get original sale detail
-                $saleDetail = $sale->details
-                    ->where("id", $item["sale_detail_id"])
-                    ->firstOrFail();
+                $saleDetail = $sale->details->where("id", $item["sale_detail_id"])->firstOrFail();
 
                 // Already returned qty
-                $alreadyReturned = SaleReturnDetail::where(
-                    "sale_detail_id",
-                    $saleDetail->id,
-                )->sum("quantity");
+                $alreadyReturned = SaleReturnDetail::where("sale_detail_id", $saleDetail->id)->sum("quantity");
 
                 $availableQty = $saleDetail->quantity - $alreadyReturned;
 
@@ -128,26 +119,24 @@ class SaleReturnController extends Controller
                         [
                             "error" => "Return quantity exceeds sold quantity",
                         ],
-                        422,
+                        422
                     );
                 }
 
                 // Calculate line total
                 $lineTotal = $item["quantity"] * ($saleDetail->discount_price > 0 ? $saleDetail->discount_price : $saleDetail->price);
 
-                Log::info($saleReturn);
-
                 // 5️⃣ Create Sale Return Detail
                 SaleReturnDetail::create([
                     "sale_return_id" => $saleReturn->id,
                     "sale_detail_id" => $saleDetail->id,
+                    "inventory_id" => $saleDetail->inventory_id,
                     "product_id" => $saleDetail->product_id,
                     "quantity" => $item["quantity"],
                     "price" => $saleDetail->discount_price > 0 ? $saleDetail->discount_price : $saleDetail->price,
-                    "total" => $lineTotal,
+                    "total" => $lineTotal
                 ]);
 
-                // 6️⃣ FIFO stock IN (negative first)
                 $remainingQty = $item["quantity"];
 
                 $inventory = Inventory::find($saleDetail->inventory_id);
@@ -157,7 +146,7 @@ class SaleReturnController extends Controller
                     $inventory->save();
                 }
 
-                // 3. Insert stock transaction
+                // Insert stock transaction
                 StockTransaction::create([
                     'inventory_id' => $inventory->id ?? null,
                     'reference_d' => $saleReturn->id,
@@ -221,14 +210,14 @@ class SaleReturnController extends Controller
                 $totalReturnAmount += $lineTotal;
             }
 
-            // 7️⃣ Update total amount
+            // Update total amount
             $saleReturn->update([
                 "total_amount" => $totalReturnAmount,
             ]);
 
             DB::commit();
 
-            // 8️⃣ Return resource (same style as SaleController)
+            // Return resource (same style as SaleController)
             return new SaleReturnResource(
                 $saleReturn->fresh([
                     "customer",
@@ -266,6 +255,230 @@ class SaleReturnController extends Controller
         return new SaleReturnResource($sale_return);
     }
 
+    // public function update(Request $request, string $id)
+    // {
+    //     $request->validate([
+    //         "remark" => "nullable|string|max:1000",
+    //         "updated_by" => "required|exists:users,id",
+    //         "return_date" => "nullable|date",
+    //         "products" => "required|array|min:1",
+    //         "products.*.sale_detail_id" => "required|exists:sale_details,id",
+    //         "products.*.quantity" => "required|integer|min:1",
+    //     ]);
+
+    //     Log::info("Request:", $request->all());
+
+    //     DB::beginTransaction();
+
+    //     try {
+    //         // Lock Sale Return
+    //         $saleReturn = SaleReturn::with(["details", "details.saleDetail"])
+    //             ->lockForUpdate()
+    //             ->findOrFail($id);
+
+    //         Log::info("sales return:", $saleReturn->toArray());
+
+    //         $sale = Sale::where("id", $saleReturn->sale_id)->firstOrFail();
+
+    //         // ROLLBACK previous stock-in
+    //         foreach ($saleReturn->details as $detail) {
+    //             $remainingQty = $detail->quantity;
+
+    //             // Deduct FIFO (positive inventory first)
+    //             $inventories = Inventory::where(
+    //                 "product_id",
+    //                 $detail->product_id,
+    //             )
+    //                 ->where("warehouse_id", $saleReturn->warehouse_id)
+    //                 ->where("qty", ">", 0)
+    //                 ->orderByRaw("expired_date IS NULL")
+    //                 ->orderBy("expired_date")
+    //                 ->orderBy("created_at")
+    //                 ->lockForUpdate()
+    //                 ->get();
+
+    //             foreach ($inventories as $inventory) {
+    //                 if ($remainingQty <= 0) {
+    //                     break;
+    //                 }
+
+    //                 $deductQty = min($inventory->qty, $remainingQty);
+    //                 $inventory->qty -= $deductQty;
+    //                 $inventory->updated_by = $request->updated_by;
+    //                 $inventory->save();
+
+    //                 StockTransaction::create([
+    //                     "inventory_id" => $inventory->id,
+    //                     "reference_id" => $saleReturn->id,
+    //                     "reference_type" => "sale_return_update",
+    //                     "quantity_change" => $deductQty,
+    //                     "type" => "out",
+    //                     "created_by" => $request->updated_by,
+    //                 ]);
+
+    //                 $remainingQty -= $deductQty;
+    //             }
+
+    //             // Remaining → negative inventory
+    //             if ($remainingQty > 0) {
+    //                 $negativeInventory = Inventory::firstOrCreate(
+    //                     [
+    //                         "product_id" => $detail->product_id,
+    //                         "warehouse_id" => $saleReturn->warehouse_id,
+    //                         "expired_date" => null,
+    //                     ],
+    //                     [
+    //                         "qty" => 0,
+    //                         "created_by" => $request->updated_by,
+    //                         "updated_by" => $request->updated_by,
+    //                     ],
+    //                 );
+
+    //                 $negativeInventory->qty -= $remainingQty;
+    //                 $negativeInventory->save();
+
+    //                 StockTransaction::create([
+    //                     "inventory_id" => $negativeInventory->id,
+    //                     "reference_id" => $saleReturn->id,
+    //                     "reference_type" => "sale_return_update",
+    //                     "quantity_change" => $remainingQty,
+    //                     "type" => "out",
+    //                     "created_by" => $request->updated_by,
+    //                 ]);
+    //             }
+    //         }
+
+    //         // Delete old return details
+    //         SaleReturnDetail::where("sale_return_id", $saleReturn->id)->delete();
+
+    //         // Re-apply return (same logic as store)
+    //         $totalReturnAmount = 0;
+
+    //         Log::info($sale->toArray());
+
+    //         foreach ($request->products as $item) {
+    //             $saleDetail = $sale->details
+    //                 ->where("id", $item["sale_detail_id"])
+    //                 ->firstOrFail();
+
+    //             $alreadyReturned = SaleReturnDetail::where(
+    //                 "sale_detail_id",
+    //                 $saleDetail->id,
+    //             )
+    //                 ->where("sale_return_id", "!=", $saleReturn->id)
+    //                 ->sum("quantity");
+
+    //             $availableQty = $saleDetail->quantity - $alreadyReturned;
+
+    //             if ($item["quantity"] > $availableQty) {
+    //                 throw ValidationException::withMessages([
+    //                     "quantity" => "Return quantity exceeds sold quantity",
+    //                 ]);
+    //             }
+
+    //             $lineTotal = $item["quantity"] * $saleDetail->price;
+
+    //             SaleReturnDetail::create([
+    //                 "sale_return_id" => $saleReturn->id,
+    //                 "sale_detail_id" => $saleDetail->id,
+    //                 "inventory_id" => $saleDetail->inventory_id,
+    //                 "product_id" => $saleDetail->product_id,
+    //                 "quantity" => $item["quantity"],
+    //                 "price" => $saleDetail->price,
+    //                 "total" => $lineTotal,
+    //             ]);
+
+    //             // FIFO stock IN (negative first)
+    //             $remainingQty = $item["quantity"];
+
+    //             $negatives = Inventory::where(
+    //                 "product_id",
+    //                 $saleDetail->product_id,
+    //             )
+    //                 ->where("warehouse_id", $saleReturn->warehouse_id)
+    //                 ->where("qty", "<", 0)
+    //                 ->orderBy("created_at")
+    //                 ->lockForUpdate()
+    //                 ->get();
+
+    //             foreach ($negatives as $inventory) {
+    //                 if ($remainingQty <= 0) {
+    //                     break;
+    //                 }
+
+    //                 $offsetQty = min(abs($inventory->qty), $remainingQty);
+    //                 $inventory->qty += $offsetQty;
+    //                 $inventory->save();
+
+    //                 StockTransaction::create([
+    //                     "inventory_id" => $inventory->id,
+    //                     "reference_id" => $saleReturn->id,
+    //                     "reference_type" => "sale_return",
+    //                     "quantity_change" => $offsetQty,
+    //                     "type" => "in",
+    //                     "created_by" => $request->updated_by,
+    //                 ]);
+
+    //                 $remainingQty -= $offsetQty;
+    //             }
+
+    //             if ($remainingQty > 0) {
+    //                 $inventory = Inventory::create([
+    //                     "product_id" => $saleDetail->product_id,
+    //                     "warehouse_id" => $saleReturn->warehouse_id,
+    //                     "qty" => $remainingQty,
+    //                     "created_by" => $request->updated_by,
+    //                     "updated_by" => $request->updated_by,
+    //                 ]);
+
+    //                 StockTransaction::create([
+    //                     "inventory_id" => $inventory->id,
+    //                     "reference_id" => $saleReturn->id,
+    //                     "reference_type" => "sale_return",
+    //                     "quantity_change" => $remainingQty,
+    //                     "type" => "in",
+    //                     "created_by" => $request->updated_by,
+    //                 ]);
+    //             }
+
+    //             $totalReturnAmount += $lineTotal;
+    //         }
+
+    //         // Update header
+    //         $saleReturn->update([
+    //             "remark" => $request->remark,
+    //             "return_date" =>
+    //                 $request->return_date ?? $saleReturn->return_date,
+    //             "payment_id" => $request->payment_id ?? $saleReturn->payment_id,
+    //             "total_amount" => $totalReturnAmount,
+    //             "updated_by" => $request->updated_by,
+    //         ]);
+
+    //         DB::commit();
+
+    //         return new SaleReturnResource(
+    //             $saleReturn->fresh([
+    //                 "customer",
+    //                 "status",
+    //                 "warehouse",
+    //                 "paymentMethod",
+    //                 "details.product",
+    //                 "createdBy",
+    //                 "updatedBy",
+    //             ]),
+    //         );
+    //     } catch (\Exception $e) {
+    //         DB::rollBack();
+    //         return response()->json(
+    //             [
+    //                 "error" => "Failed to update sale return",
+    //                 "details" => $e->getMessage(),
+    //             ],
+    //             500,
+    //         );
+    //     }
+    // }
+
     public function update(Request $request, string $id)
     {
         $request->validate([
@@ -277,108 +490,53 @@ class SaleReturnController extends Controller
             "products.*.quantity" => "required|integer|min:1",
         ]);
 
-        Log::info("Request:", $request->all());
-
         DB::beginTransaction();
 
         try {
-            // 1️⃣ Lock Sale Return
+            // Lock sale return
             $saleReturn = SaleReturn::with(["details", "details.saleDetail"])
                 ->lockForUpdate()
                 ->findOrFail($id);
 
-            Log::info("sales return:", $saleReturn->toArray());
+            $sale = Sale::with("details")
+                ->lockForUpdate()
+                ->findOrFail($saleReturn->sale_id);
 
-            $sale = Sale::where("id", $saleReturn->sale_id)->firstOrFail();
-
-            // 3️⃣ ROLLBACK previous stock-in
+            // ROLLBACK previous return stock (same inventory_id only)
             foreach ($saleReturn->details as $detail) {
-                $remainingQty = $detail->quantity;
+                $inventory = Inventory::lockForUpdate()->find($detail->inventory_id);
 
-                // Deduct FIFO (positive inventory first)
-                $inventories = Inventory::where(
-                    "product_id",
-                    $detail->product_id,
-                )
-                    ->where("warehouse_id", $saleReturn->warehouse_id)
-                    ->where("qty", ">", 0)
-                    ->orderByRaw("expired_date IS NULL")
-                    ->orderBy("expired_date")
-                    ->orderBy("created_at")
-                    ->lockForUpdate()
-                    ->get();
-
-                foreach ($inventories as $inventory) {
-                    if ($remainingQty <= 0) {
-                        break;
-                    }
-
-                    $deductQty = min($inventory->qty, $remainingQty);
-                    $inventory->qty -= $deductQty;
-                    $inventory->updated_by = $request->updated_by;
-                    $inventory->save();
-
-                    StockTransaction::create([
-                        "inventory_id" => $inventory->id,
-                        "reference_id" => $saleReturn->id,
-                        "reference_type" => "sale_return_update",
-                        "quantity_change" => $deductQty,
-                        "type" => "out",
-                        "created_by" => $request->updated_by,
-                    ]);
-
-                    $remainingQty -= $deductQty;
+                if (!$inventory) {
+                    throw new \Exception("Inventory not found for rollback");
                 }
 
-                // Remaining → negative inventory
-                if ($remainingQty > 0) {
-                    $negativeInventory = Inventory::firstOrCreate(
-                        [
-                            "product_id" => $detail->product_id,
-                            "warehouse_id" => $saleReturn->warehouse_id,
-                            "expired_date" => null,
-                        ],
-                        [
-                            "qty" => 0,
-                            "created_by" => $request->updated_by,
-                            "updated_by" => $request->updated_by,
-                        ],
-                    );
+                $inventory->qty -= $detail->quantity;
+                $inventory->updated_by = $request->updated_by;
+                $inventory->save();
 
-                    $negativeInventory->qty -= $remainingQty;
-                    $negativeInventory->save();
-
-                    StockTransaction::create([
-                        "inventory_id" => $negativeInventory->id,
-                        "reference_id" => $saleReturn->id,
-                        "reference_type" => "sale_return_update",
-                        "quantity_change" => $remainingQty,
-                        "type" => "out",
-                        "created_by" => $request->updated_by,
-                    ]);
-                }
+                StockTransaction::create([
+                    "inventory_id" => $inventory->id,
+                    "reference_id" => $saleReturn->id,
+                    "reference_type" => "sale_return_update",
+                    "quantity_change" => $detail->quantity,
+                    "type" => "out",
+                    "created_by" => $request->updated_by,
+                ]);
             }
 
-            // 4️⃣ Delete old return details
-            SaleReturnDetail::where(
-                "sale_return_id",
-                $saleReturn->id,
-            )->delete();
+            // Remove old return details
+            SaleReturnDetail::where("sale_return_id", $saleReturn->id)->delete();
 
-            // 5️⃣ Re-apply return (same logic as store)
+            //Re-apply return (same inventory_id only)
             $totalReturnAmount = 0;
-
-            Log::info($sale->toArray());
 
             foreach ($request->products as $item) {
                 $saleDetail = $sale->details
                     ->where("id", $item["sale_detail_id"])
                     ->firstOrFail();
 
-                $alreadyReturned = SaleReturnDetail::where(
-                    "sale_detail_id",
-                    $saleDetail->id,
-                )
+                // already returned except this return
+                $alreadyReturned = SaleReturnDetail::where("sale_detail_id", $saleDetail->id)
                     ->where("sale_return_id", "!=", $saleReturn->id)
                     ->sum("quantity");
 
@@ -392,77 +550,45 @@ class SaleReturnController extends Controller
 
                 $lineTotal = $item["quantity"] * $saleDetail->price;
 
+                // save return detail
                 SaleReturnDetail::create([
                     "sale_return_id" => $saleReturn->id,
                     "sale_detail_id" => $saleDetail->id,
+                    "inventory_id" => $saleDetail->inventory_id,
                     "product_id" => $saleDetail->product_id,
                     "quantity" => $item["quantity"],
                     "price" => $saleDetail->price,
                     "total" => $lineTotal,
                 ]);
 
-                // FIFO stock IN (negative first)
-                $remainingQty = $item["quantity"];
+                // 🔁 Put stock back to SAME inventory
+                $inventory = Inventory::lockForUpdate()->find($saleDetail->inventory_id);
 
-                $negatives = Inventory::where(
-                    "product_id",
-                    $saleDetail->product_id,
-                )
-                    ->where("warehouse_id", $saleReturn->warehouse_id)
-                    ->where("qty", "<", 0)
-                    ->orderBy("created_at")
-                    ->lockForUpdate()
-                    ->get();
-
-                foreach ($negatives as $inventory) {
-                    if ($remainingQty <= 0) {
-                        break;
-                    }
-
-                    $offsetQty = min(abs($inventory->qty), $remainingQty);
-                    $inventory->qty += $offsetQty;
-                    $inventory->save();
-
-                    StockTransaction::create([
-                        "inventory_id" => $inventory->id,
-                        "reference_id" => $saleReturn->id,
-                        "reference_type" => "sale_return",
-                        "quantity_change" => $offsetQty,
-                        "type" => "in",
-                        "created_by" => $request->updated_by,
-                    ]);
-
-                    $remainingQty -= $offsetQty;
+                if (!$inventory) {
+                    throw new \Exception("Inventory not found for return");
                 }
 
-                if ($remainingQty > 0) {
-                    $inventory = Inventory::create([
-                        "product_id" => $saleDetail->product_id,
-                        "warehouse_id" => $saleReturn->warehouse_id,
-                        "qty" => $remainingQty,
-                        "created_by" => $request->updated_by,
-                        "updated_by" => $request->updated_by,
-                    ]);
+                $inventory->qty += $item["quantity"];
+                $inventory->updated_by = $request->updated_by;
+                $inventory->save();
 
-                    StockTransaction::create([
-                        "inventory_id" => $inventory->id,
-                        "reference_id" => $saleReturn->id,
-                        "reference_type" => "sale_return",
-                        "quantity_change" => $remainingQty,
-                        "type" => "in",
-                        "created_by" => $request->updated_by,
-                    ]);
-                }
+                StockTransaction::create([
+                    "inventory_id" => $inventory->id,
+                    "reference_id" => $saleReturn->id,
+                    "reference_type" => "sale_return",
+                    "quantity_change" => $item["quantity"],
+                    "type" => "in",
+                    "created_by" => $request->updated_by,
+                ]);
 
                 $totalReturnAmount += $lineTotal;
             }
 
-            // 6️⃣ Update header
+            // Update
             $saleReturn->update([
                 "remark" => $request->remark,
-                "return_date" =>
-                    $request->return_date ?? $saleReturn->return_date,
-                "payment_id" => $request->payment_id,
+                "return_date" => $request->return_date ?? $saleReturn->return_date,
+                "payment_id" => $request->payment_id ?? $saleReturn->payment_id,
                 "total_amount" => $totalReturnAmount,
                 "updated_by" => $request->updated_by,
             ]);
@@ -478,31 +604,27 @@ class SaleReturnController extends Controller
                     "details.product",
                     "createdBy",
                     "updatedBy",
-                ]),
+                ])
             );
         } catch (\Exception $e) {
             DB::rollBack();
-            return response()->json(
-                [
-                    "error" => "Failed to update sale return",
-                    "details" => $e->getMessage(),
-                ],
-                500,
-            );
+            return response()->json([
+                "error" => "Failed to update sale return",
+                "details" => $e->getMessage(),
+            ], 500);
         }
     }
+
 
     public function destroy(Request $request, string $id)
     {
         DB::beginTransaction();
 
         try {
-            // 1️⃣ Lock Sale Return with details
-            $saleReturn = SaleReturn::with(["details"])
-                ->lockForUpdate()
-                ->findOrFail($id);
+            // Lock Sale Return with details
+            $saleReturn = SaleReturn::with(["details"])->lockForUpdate()->findOrFail($id);
 
-            // 2️⃣ Prevent double void
+            // Prevent double void
             if ($saleReturn->status_id == 8) {
                 return response()->json(
                     [
@@ -512,7 +634,7 @@ class SaleReturnController extends Controller
                 );
             }
 
-            // 3️⃣ Rollback stock (reverse stock-in)
+            // Rollback stock (reverse stock-in)
             foreach ($saleReturn->details as $detail) {
                 $remainingQty = $detail->quantity;
 
@@ -581,7 +703,7 @@ class SaleReturnController extends Controller
                 }
             }
 
-            // 4️⃣ Mark Sale Return as VOID
+            // Mark Sale Return as VOID
             $saleReturn->update([
                 "status_id" => 8, // VOID
                 "void_by" => $request->void_by,

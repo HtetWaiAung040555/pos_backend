@@ -14,6 +14,7 @@ class SaleReturnDetail extends Model
     protected $fillable = [
         'sale_return_id',
         'sale_detail_id',
+        'inventory_id',
         'product_id',
         'quantity',
         'price',
@@ -28,6 +29,10 @@ class SaleReturnDetail extends Model
     public function saleDetail()
     {
         return $this->belongsTo(saleDetail::class);
+    }
+
+    public function inventory(){
+        return $this->belongsTo(Inventory::class);
     }
 
     public function product()
