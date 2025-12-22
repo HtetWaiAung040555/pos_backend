@@ -23,13 +23,13 @@ class SaleDetail extends Model
         'promotion_id',
     ];
 
-    public function inventory(){
-        return $this->belongsTo(Inventory::class);
-    }
-
     public function sale()
     {
         return $this->belongsTo(Sale::class);
+    }
+
+    public function inventory(){
+        return $this->belongsTo(Inventory::class);
     }
 
     public function product()

@@ -12,8 +12,11 @@ return new class extends Migration
             $table->id();
             $table->string('name')->nullable();
             $table->integer('qty');
+            $table->date('expired_date')->nullable();
             $table->foreignId('product_id')->constrained('products')->restrictOnDelete();
             $table->foreignId('warehouse_id')->constrained('warehouses')->restrictOnDelete();
+            $table->dateTime('void_at')->nullable();
+            $table->unsignedBigInteger('void_by')->nullable();
             $table->unsignedBigInteger('created_by');
             $table->unsignedBigInteger('updated_by');
             $table->timestamps();

@@ -13,15 +13,20 @@ class PurchaseDetail extends Model
     protected $primaryKey = 'id';
     protected $fillable = [
         'purchase_id',
+        'inventory_id',
         'product_id',
         'quantity',
         'price',
         'total'
     ];
 
-    public function sale()
+    public function purchase()
     {
-        return $this->belongsTo(Sale::class);
+        return $this->belongsTo(Purchase::class);
+    }
+
+    public function inventory(){
+        return $this->belongsTo(Inventory::class);
     }
 
     public function product()

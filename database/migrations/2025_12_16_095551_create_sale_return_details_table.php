@@ -16,6 +16,7 @@ return new class extends Migration
             $table->string('sale_return_id');
             $table->foreign('sale_return_id')->references('id')->on('sale_returns')->restrictOnDelete();
             $table->foreignId('sale_detail_id')->constrained('sale_details')->restrictOnDelete();
+            $table->foreignId('inventory_id')->constrained('inventories')->restrictOnDelete();
             $table->foreignId('product_id')->constrained('products')->restrictOnDelete();
             $table->integer('quantity');
             $table->decimal('price',11,2);
