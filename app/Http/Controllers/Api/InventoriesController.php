@@ -130,7 +130,7 @@ class InventoriesController extends Controller
                 'updated_by'    => 'required|exists:users,id'
             ]);
 
-            $hasOutTransaction = StockTransaction::where('inventory_id', $inventory->id)->where('type', 'out')->exists();
+            $hasOutTransaction = StockTransaction::where('inventory_id', $inventory->id)->where('reference_type', 'sale')->exists();
 
             if ($hasOutTransaction && $request->has('qty')) {
                 return response()->json([

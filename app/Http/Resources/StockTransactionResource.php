@@ -16,6 +16,7 @@ class StockTransactionResource extends JsonResource
                 "id" => $this->inventory?->id,
                 "name" => $this->inventory?->name,
                 "qty" => $this->inventory?->qty,
+                "expired_date" => $this->inventory?->expired_date,
                 "product" => $this->inventory?->product
                     ? [
                         "id" => $this->inventory->product->id,

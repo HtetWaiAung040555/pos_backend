@@ -324,7 +324,7 @@ class SaleReturnController extends Controller
                     ]);
                 }
 
-                $lineTotal = $item["quantity"] * $saleDetail->price;
+                $lineTotal = $item["quantity"] * ($saleDetail->discount_price > 0 ? $saleDetail->discount_price : $saleDetail->price);
 
                 // save return detail
                 SaleReturnDetail::create([
@@ -333,7 +333,7 @@ class SaleReturnController extends Controller
                     "inventory_id" => $saleDetail->inventory_id,
                     "product_id" => $saleDetail->product_id,
                     "quantity" => $item["quantity"],
-                    "price" => $saleDetail->price,
+                    "price" => $saleDetail->discount_price > 0 ? $saleDetail->discount_price : $saleDetail->price,
                     "total" => $lineTotal,
                 ]);
 
