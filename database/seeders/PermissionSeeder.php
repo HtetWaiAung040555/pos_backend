@@ -51,7 +51,24 @@ class PermissionSeeder extends Seeder
             ['id' => 38, 'name' => 'Customer', 'action' => 'View', 'created_by' => 1, 'updated_by' => 1],
             ['id' => 39, 'name' => 'Customer', 'action' => 'Create', 'created_by' => 1, 'updated_by' => 1],
             ['id' => 40, 'name' => 'Customer', 'action' => 'Update', 'created_by' => 1, 'updated_by' => 1],
-            ['id' => 41, 'name' => 'Customer', 'action' => 'Delete', 'created_by' => 1, 'updated_by' => 1]
+            ['id' => 41, 'name' => 'Customer', 'action' => 'Delete', 'created_by' => 1, 'updated_by' => 1],
+            ['id' => 42, 'name' => 'Category', 'action' => 'View', 'created_by' => 1, 'updated_by' => 1],
+            ['id' => 43, 'name' => 'Category', 'action' => 'Create', 'created_by' => 1, 'updated_by' => 1],
+            ['id' => 44, 'name' => 'Category', 'action' => 'Update', 'created_by' => 1, 'updated_by' => 1],
+            ['id' => 45, 'name' => 'Category', 'action' => 'Delete', 'created_by' => 1, 'updated_by' => 1],
+            ['id' => 46, 'name' => 'POS', 'action' => 'View', 'created_by' => 1, 'updated_by' => 1],
+            ['id' => 47, 'name' => 'Payment method', 'action' => 'View', 'created_by' => 1, 'updated_by' => 1],
+            ['id' => 48, 'name' => 'Payment method', 'action' => 'Create', 'created_by' => 1, 'updated_by' => 1],
+            ['id' => 49, 'name' => 'Payment method', 'action' => 'Update', 'created_by' => 1, 'updated_by' => 1],
+            ['id' => 50, 'name' => 'Payment method', 'action' => 'Delete', 'created_by' => 1, 'updated_by' => 1],
+            ['id' => 51, 'name' => 'Wallet', 'action' => 'View', 'created_by' => 1, 'updated_by' => 1],
+            ['id' => 52, 'name' => 'Wallet', 'action' => 'Create', 'created_by' => 1, 'updated_by' => 1],
+            ['id' => 53, 'name' => 'Wallet', 'action' => 'Update', 'created_by' => 1, 'updated_by' => 1],
+            ['id' => 54, 'name' => 'Wallet', 'action' => 'Delete', 'created_by' => 1, 'updated_by' => 1],
+            ['id' => 55, 'name' => 'Promotion', 'action' => 'View', 'created_by' => 1, 'updated_by' => 1],
+            ['id' => 56, 'name' => 'Promotion', 'action' => 'Create', 'created_by' => 1, 'updated_by' => 1],
+            ['id' => 57, 'name' => 'Promotion', 'action' => 'Update', 'created_by' => 1, 'updated_by' => 1],
+            ['id' => 58, 'name' => 'Promotion', 'action' => 'Delete', 'created_by' => 1, 'updated_by' => 1]
         ];
 
         foreach ($permissions as $permission) {

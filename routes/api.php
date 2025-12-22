@@ -16,6 +16,7 @@ use App\Http\Controllers\Api\StatusesController;
 use App\Http\Controllers\Api\WarehousesController;
 use App\Http\Controllers\Api\CustomerTransactionController;
 use App\Http\Controllers\Api\PromotionsController;
+use App\Http\Controllers\Api\PurchasesController;
 use App\Http\Controllers\Api\SaleReturnController;
 use App\Http\Controllers\Api\StockTransactionController;
 use App\Http\Controllers\Api\SuppliersController;
@@ -79,6 +80,8 @@ Route::middleware(['auth:sanctum'])->group(function () {
     Route::apiResource('/customers', CustomersController::class);
 
     Route::apiResource('/suppliers', SuppliersController::class);
+
+    Route::apiResource('/purchases', PurchasesController::class);
 
     Route::apiResource('/sales', SaleController::class);
 

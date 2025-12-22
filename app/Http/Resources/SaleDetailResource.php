@@ -10,12 +10,17 @@ class SaleDetailResource extends JsonResource
     {
         return [
             'id' => $this->id,
+
+            'sale_id' => $this->sale_id,
+
             'inventory_id' => $this->inventory_id, 
+
             'product' => [
                 'id' => $this->product->id ?? null,
                 'name' => $this->product->name ?? null,
-                'price' => $this->price,
+                'price' => $this->price
             ],
+
             'price' => $this->price,
             'quantity' => $this->quantity,
             'discount_price' => $this->discount_price,
@@ -30,9 +35,9 @@ class SaleDetailResource extends JsonResource
                 'end_at' => $this->promotion->end_at ?? null,
                 'status' => [
                     'id' => $this->promotion->status->id ?? null,
-                    'name' => $this->promotion->status->name ?? null,
+                    'name' => $this->promotion->status->name ?? null
                 ],
-                'created_by' => $this->promotion->createdBy->name ?? null,
+                'created_by' => $this->promotion->createdBy->name ?? null
             ],
         ];
     }

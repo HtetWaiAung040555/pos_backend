@@ -11,29 +11,41 @@ class PurchaseResource extends JsonResource
     {
         return [
             'id' => $this->id,
+
             'warehouse' => [
-                'id' => $this->warehouse->id ?? null,
-                'name' => $this->warehouse->name ?? null,
+                'id'   => optional($this->warehouse)->id,
+                'name' => optional($this->warehouse)->name,
             ],
+
             'supplier' => [
-                'id' => $this->supplier->id ?? null,
-                'name' => $this->supplier->name ?? null,
-                'balance' => $this->supplier->balance ?? 0,
+                'id'      => optional($this->supplier)->id,
+                'name'    => optional($this->supplier)->name,
             ],
-            'payment_method' => [
-                'id' => $this->paymentMethod->id ?? null,
-                'name' => $this->paymentMethod->name ?? null,
+
+            'payment' => [
+                'id'   => optional($this->payment)->id,
+                'name' => optional($this->payment)->name,
             ],
+
             'status' => [
-                'id' => $this->status->id ?? null,
-                'name' => $this->status->name ?? null,
+                'id'   => optional($this->status)->id,
+                'name' => optional($this->status)->name,
             ],
-            'total_amount' => $this->total_amount,
-            'remark' => $this->remark,
+
+            'total_amount'  => $this->total_amount,
+            'remark'        => $this->remark,
             'purchase_date' => $this->purchase_date,
-            'created_by' => $this->createdBy->name ?? null,
-            'updated_by' => $this->updatedBy->name ?? null,
-            'details' => PurchaseDetailResource::collection($this->whenLoaded('details')),
+
+            'created_by' => optional($this->createdBy)->name,
+            'updated_by' => optional($this->updatedBy)->name,
+
+            'void_by' => optional($this->voidBy)->name,
+            'void_at' => $this->void_at,
+
+            'details' => PurchaseDetailResource::collection(
+                $this->whenLoaded('details')
+            ),
+
             'created_at' => $this->created_at,
             'updated_at' => $this->updated_at,
         ];

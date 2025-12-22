@@ -29,7 +29,7 @@ class Purchase extends Model
     ];
 
     protected $casts = [
-        'sale_date' => 'datetime',
+        'purchase_date' => 'datetime',
         'void_at' => 'datetime',
     ];
 
@@ -37,24 +37,24 @@ class Purchase extends Model
     {
         parent::boot();
 
-        static::creating(function ($sale) {
+        static::creating(function ($purchase) {
             $dateCode = Carbon::now()->format('dmy');
 
-            $lastSale = self::where('id', 'like', "S-{$dateCode}%")
+            $lastPurchase = self::where('id', 'like', "S-{$dateCode}%")
                 ->orderBy('id', 'desc')
                 ->first();
 
-            $nextNumber = $lastSale
-                ? intval(substr($lastSale->id, -5)) + 1
+            $nextNumber = $lastPurchase
+                ? intval(substr($lastPurchase->id, -5)) + 1
                 : 1;
 
-            $sale->id = 'S-' . $dateCode . str_pad($nextNumber, 5, '0', STR_PAD_LEFT);
+            $purchase->id = 'P-' . $dateCode . str_pad($nextNumber, 5, '0', STR_PAD_LEFT);
         });
     }
 
     public function details()
     {
-        return $this->hasMany(SaleDetail::class);
+        return $this->hasMany(PurchaseDetail::class);
     }
 
     public function warehouse()
@@ -62,9 +62,9 @@ class Purchase extends Model
         return $this->belongsTo(Warehouse::class);
     }
 
-    public function customer()
+    public function supplier()
     {
-        return $this->belongsTo(Customer::class);
+        return $this->belongsTo(Supplier::class);
     }
 
     public function paymentMethod()
