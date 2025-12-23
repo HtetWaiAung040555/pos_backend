@@ -239,7 +239,7 @@ class PurchaseReturnController extends Controller
                     "reference_id" => $purchaseReturn->id,
                     "reference_type" => "purchase_return_update",
                     "quantity_change" => $detail->quantity,
-                    "type" => "out",
+                    "type" => "in",
                     "created_by" => $request->updated_by,
                 ]);
             }
@@ -297,7 +297,7 @@ class PurchaseReturnController extends Controller
                     "reference_id" => $purchaseReturn->id,
                     "reference_type" => "purchase_return",
                     "quantity_change" => $item["quantity"],
-                    "type" => "in",
+                    "type" => "out",
                     "created_by" => $request->updated_by,
                 ]);
 
