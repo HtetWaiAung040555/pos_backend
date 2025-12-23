@@ -428,7 +428,7 @@ class SaleReturnController extends Controller
                     'reference_id' => $saleReturn->id,
                     'reference_type' => 'sale_return_void',
                     'quantity_change' => $detail->quantity,
-                    'type' => 'out',
+                    'type' => 'in',
                     'created_by' => $request->void_by,
                 ]);
             }

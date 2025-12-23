@@ -250,6 +250,15 @@ class PurchasesController extends Controller
             foreach ($purchase->details as $detail) {
 
                 $inventory = Inventory::find($detail->inventory_id);
+
+                $hasOutTransaction = StockTransaction::where('inventory_id', $inventory->id)->where('reference_type', 'sale')->exists();
+
+                if ($hasOutTransaction) {
+                    return response()->json([
+                        'error' => 'This purchase was already used. Quantity cannot be directly updated. Please use stock adjustment.'
+                    ], 422);
+                }
+
                 if ($inventory) {
                     $inventory->qty -= $detail->quantity;
                     $inventory->save();
