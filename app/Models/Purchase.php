@@ -38,10 +38,12 @@ class Purchase extends Model
         parent::boot();
 
         static::creating(function ($purchase) {
-            $dateCode = Carbon::now()->format('dmy');
 
-            $lastPurchase = self::where('id', 'like', "S-{$dateCode}%")
+            $dateCode = Carbon::now()->format('ymd');
+
+            $lastPurchase = self::where('id', 'like', "P-{$dateCode}%")
                 ->orderBy('id', 'desc')
+                ->lockForUpdate()
                 ->first();
 
             $nextNumber = $lastPurchase
