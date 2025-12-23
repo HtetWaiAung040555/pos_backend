@@ -3,25 +3,22 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Http\Resources\SaleReturnResource;
-use App\Models\CustomerTransaction;
+use App\Http\Resources\PurchaseReturnResource;
 use App\Models\Inventory;
-use App\Models\Sale;
-use App\Models\SaleReturn;
-use App\Models\SaleReturnDetail;
+use App\Models\Purchase;
+use App\Models\PurchaseReturn;
+use App\Models\PurchaseReturnDetail;
 use App\Models\StockTransaction;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\ValidationException;
-use PDO;
 
-class SaleReturnController extends Controller
+class PurchaseReturnController extends Controller
 {
     public function index(Request $request)
     {
-        $query = SaleReturn::with([
-            "customer",
+        $query = PurchaseReturn::with([
+            "supplier",
             "status",
             "warehouse",
             "paymentMethod",
@@ -30,8 +27,8 @@ class SaleReturnController extends Controller
             "updatedBy",
         ]);
 
-        if ($request->filled("customer_id")) {
-            $query->where("customer_id", $request->customer_id);
+        if ($request->filled("purchase_id")) {
+            $query->where("purchase_id", $request->customer_id);
         }
 
         if ($request->filled("status_id")) {
@@ -53,45 +50,45 @@ class SaleReturnController extends Controller
             $query->whereDate("return_date", "<=", $request->end_date);
         }
 
-        return SaleReturnResource::collection($query->get());
+        return PurchaseReturnResource::collection($query->get());
     }
 
     public function store(Request $request)
     {
         $request->validate([
-            "sale_id" => "required|exists:sales,id",
+            "purchase_id" => "required|exists:purchases,id",
             "warehouse_id" => "required|exists:warehouses,id",
-            "customer_id" => "required|exists:customers,id",
+            "supplier_id" => "required|exists:suppliers,id",
             "payment_id" => "required|exists:payment_methods,id",
             "remark" => "nullable|string|max:1000",
             "created_by" => "required|exists:users,id",
             "updated_by" => "nullable|exists:users,id",
             "return_date" => "nullable|date",
             "products" => "required|array|min:1",
-            "products.*.sale_detail_id" => "required|exists:sale_details,id",
+            "products.*.purchase_detail_id" => "required|exists:purchase_details,id",
             "products.*.quantity" => "required|integer|min:1",
         ]);
 
         DB::beginTransaction();
 
         try {
-            // Lock sale row (important for concurrency)
-            $sale = Sale::with("details")
+            // Lock purchase row (important for concurrency)
+            $purchase = Purchase::with("details")
                 ->lockForUpdate()
-                ->findOrFail($request->sale_id);
+                ->findOrFail($request->purchase_id);
 
-            // Only confirmed sales can be returned
-            if ($sale->status_id != 7) {
+            // Only confirmed purchases can be returned
+            if ($purchase->status_id != 7) {
                 throw ValidationException::withMessages([
-                    "sale" => "Only confirmed sales can be returned",
+                    "purchase" => "Only confirmed purchases can be returned",
                 ]);
             }
 
-            // Create Sale Return (header)
-            $saleReturn = SaleReturn::create([
-                "sale_id" => $sale->id,
+            // Create Purchase Return (header)
+            $purchaseReturn = PurchaseReturn::create([
+                "purchase_id" => $purchase->id,
                 "warehouse_id" => $request->warehouse_id,
-                "customer_id" => $request->customer_id,
+                "supplier_id" => $request->supplier_id,
                 "payment_id" => $request->payment_id,
                 "status_id" => $request->status_id,
                 "remark" => $request->remark,
@@ -105,13 +102,13 @@ class SaleReturnController extends Controller
 
             // Loop return products
             foreach ($request->products as $item) {
-                // Get original sale detail
-                $saleDetail = $sale->details->where("id", $item["sale_detail_id"])->firstOrFail();
+                // Get original purchase detail
+                $purchaseDetail = $purchase->details->where("id", $item["purchase_detail_id"])->firstOrFail();
 
                 // Already returned qty
-                $alreadyReturned = SaleReturnDetail::where("sale_detail_id", $saleDetail->id)->sum("quantity");
+                $alreadyReturned = PurchaseReturnDetail::where("purchase_detail_id", $purchaseDetail->id)->sum("quantity");
 
-                $availableQty = $saleDetail->quantity - $alreadyReturned;
+                $availableQty = $purchaseDetail->quantity - $alreadyReturned;
 
                 // Validate return qty
                 if ($item["quantity"] > $availableQty) {
@@ -124,22 +121,20 @@ class SaleReturnController extends Controller
                 }
 
                 // Calculate line total
-                $lineTotal = $item["quantity"] * ($saleDetail->discount_price > 0 ? $saleDetail->discount_price : $saleDetail->price);
+                $lineTotal = $item["quantity"] * $purchaseDetail->price;
 
-                // Create Sale Return Detail
-                SaleReturnDetail::create([
-                    "sale_return_id" => $saleReturn->id,
-                    "sale_detail_id" => $saleDetail->id,
-                    "inventory_id" => $saleDetail->inventory_id,
-                    "product_id" => $saleDetail->product_id,
+                // Create Purchase Return Detail
+                PurchaseReturnDetail::create([
+                    "purchase_return_id" => $purchaseReturn->id,
+                    "purchase_detail_id" => $purchaseDetail->id,
+                    "inventory_id" => $purchaseDetail->inventory_id,
+                    "product_id" => $purchaseDetail->product_id,
                     "quantity" => $item["quantity"],
-                    "price" => $saleDetail->discount_price > 0 ? $saleDetail->discount_price : $saleDetail->price,
+                    "price" => $purchaseDetail->discount_price > 0 ? $purchaseDetail->discount_price : $purchaseDetail->price,
                     "total" => $lineTotal
                 ]);
 
-                $remainingQty = $item["quantity"];
-
-                $inventory = Inventory::find($saleDetail->inventory_id);
+                $inventory = Inventory::find($purchaseDetail->inventory_id);
 
                 if ($inventory) {
                     $inventory->qty += $item["quantity"];
@@ -149,77 +144,26 @@ class SaleReturnController extends Controller
                 // Insert stock transaction
                 StockTransaction::create([
                     'inventory_id' => $inventory->id ?? null,
-                    'reference_d' => $saleReturn->id,
-                    'reference_type' => 'sale_return',
+                    'reference_d' => $purchaseReturn->id,
+                    'reference_type' => 'purchase_return',
                     'quantity_change' => $item["quantity"],
-                    'type' => 'in',
+                    'type' => 'out',
                     "created_by" => $request->created_by
                 ]);
-
-                // $inventories = Inventory::where(
-                //     "product_id",
-                //     $saleDetail->product_id,
-                // )
-                //     ->where("warehouse_id", $sale->warehouse_id)
-                //     ->where("qty", "<", 0)
-                //     ->orderBy("created_at")
-                //     ->lockForUpdate()
-                //     ->get();
-
-                // foreach ($inventories as $inventory) {
-                //     if ($remainingQty <= 0) {
-                //         break;
-                //     }
-
-                //     $offsetQty = min(abs($inventory->qty), $remainingQty);
-
-                //     $inventory->qty += $offsetQty;
-                //     $inventory->save();
-
-                //     StockTransaction::create([
-                //         "inventory_id" => $inventory->id,
-                //         "reference_id" => $saleReturn->id,
-                //         "reference_type" => "sale_return",
-                //         "quantity_change" => $offsetQty,
-                //         "type" => "in",
-                //         "created_by" => $request->created_by,
-                //     ]);
-
-                //     $remainingQty -= $offsetQty;
-                // }
-
-                // if ($remainingQty > 0) {
-                //     $inventory = Inventory::create([
-                //         "product_id" => $saleDetail->product_id,
-                //         "warehouse_id" => $sale->warehouse_id,
-                //         "qty" => $remainingQty,
-                //         "created_by" => $request->created_by,
-                //         "updated_by" => $request->created_by,
-                //     ]);
-
-                //     StockTransaction::create([
-                //         "inventory_id" => $inventory->id,
-                //         "reference_id" => $saleReturn->id,
-                //         "reference_type" => "sale_return",
-                //         "quantity_change" => $remainingQty,
-                //         "type" => "in",
-                //         "created_by" => $request->created_by,
-                //     ]);
-                // }
 
                 $totalReturnAmount += $lineTotal;
             }
 
             // Update total amount
-            $saleReturn->update([
+            $purchaseReturn->update([
                 "total_amount" => $totalReturnAmount,
             ]);
 
             DB::commit();
 
-            // Return resource (same style as SaleController)
-            return new SaleReturnResource(
-                $saleReturn->fresh([
+            // Return resource (same style as PurchasesController)
+            return new PurchaseReturnResource(
+                $purchaseReturn->fresh([
                     "customer",
                     "status",
                     "warehouse",
@@ -234,7 +178,7 @@ class SaleReturnController extends Controller
 
             return response()->json(
                 [
-                    "error" => "Failed to create sale return",
+                    "error" => "Failed to create purchase return",
                     "details" => $e->getMessage(),
                 ],
                 500,
@@ -391,8 +335,7 @@ class SaleReturnController extends Controller
         }
     }
 
-
-    public function destroy(Request $request, string $id)
+    public function destroy(string $id)
     {
         $request->validate([
             'void_by' => 'required|exists:users,id',
@@ -454,5 +397,4 @@ class SaleReturnController extends Controller
             ], 500);
         }
     }
-
 }

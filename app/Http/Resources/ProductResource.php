@@ -20,7 +20,10 @@ class ProductResource extends JsonResource
                 'name' => $this->category->name ?? null
             ],
 
+            'purchase_price' => $this->purchase_price,
+            'old_purchase_price' => $this->old_purchase_price,
             'price'      => $this->price,
+            'old_price'  => $this->old_price,
             'barcode'    => $this->barcode,
             'image_url'  => $this->image ? asset($this->image) : null,
             
