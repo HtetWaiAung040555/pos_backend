@@ -137,7 +137,7 @@ class PurchaseReturnController extends Controller
                 $inventory = Inventory::find($purchaseDetail->inventory_id);
 
                 if ($inventory) {
-                    $inventory->qty += $item["quantity"];
+                    $inventory->qty -= $item["quantity"];
                     $inventory->save();
                 }
 
@@ -230,7 +230,7 @@ class PurchaseReturnController extends Controller
                     throw new \Exception("Inventory not found for rollback");
                 }
 
-                $inventory->qty -= $detail->quantity;
+                $inventory->qty += $detail->quantity;
                 $inventory->updated_by = $request->updated_by;
                 $inventory->save();
 
@@ -288,7 +288,7 @@ class PurchaseReturnController extends Controller
                     throw new \Exception("Inventory not found for return");
                 }
 
-                $inventory->qty += $item["quantity"];
+                $inventory->qty -= $item["quantity"];
                 $inventory->updated_by = $request->updated_by;
                 $inventory->save();
 
@@ -362,7 +362,7 @@ class PurchaseReturnController extends Controller
                     throw new \Exception("Inventory not found for rollback");
                 }
 
-                $inventory->qty -= $detail->quantity;
+                $inventory->qty += $detail->quantity;
                 $inventory->updated_by = $request->void_by;
                 $inventory->save();
 
