@@ -14,7 +14,10 @@ return new class extends Migration
             $table->string('unit');
             $table->string('sec_prop')->nullable();
             $table->foreignId('category_id')->nullable()->constrained('categories')->restrictOnDelete();
+            $table->decimal('purchase_price',11,2);
+            $table->decimal('old_purchase_price',11,2);
             $table->decimal('price',11,2);
+            $table->decimal('old_price');
             $table->string('image')->nullable();
             $table->string('barcode')->nullable()->unique();
             $table->foreignId('status_id')->constrained('statuses')->restrictOnDelete();

@@ -68,7 +68,8 @@ class PermissionSeeder extends Seeder
             ['id' => 55, 'name' => 'Promotion', 'action' => 'View', 'created_by' => 1, 'updated_by' => 1],
             ['id' => 56, 'name' => 'Promotion', 'action' => 'Create', 'created_by' => 1, 'updated_by' => 1],
             ['id' => 57, 'name' => 'Promotion', 'action' => 'Update', 'created_by' => 1, 'updated_by' => 1],
-            ['id' => 58, 'name' => 'Promotion', 'action' => 'Delete', 'created_by' => 1, 'updated_by' => 1]
+            ['id' => 58, 'name' => 'Promotion', 'action' => 'Delete', 'created_by' => 1, 'updated_by' => 1],
+            
         ];
 
         foreach ($permissions as $permission) {

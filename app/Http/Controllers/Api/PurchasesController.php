@@ -73,7 +73,7 @@ class PurchasesController extends Controller
             $totalAmount = 0;
             foreach ($request->products as $item) {
                 $product = Product::findOrFail($item['product_id']);
-                $price = $product->price;
+                $price = $product->purchase_price;
 
                 $totalAmount += $price * $item['quantity'];
             }
@@ -101,7 +101,7 @@ class PurchasesController extends Controller
             foreach ($request->products as $item) {
 
                 $product = Product::findOrFail($item['product_id']);
-                $price = $product->price;
+                $price = $product->purchase_price;
             
                 $inventory = Inventory::firstOrCreate(
                     [
