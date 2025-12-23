@@ -42,7 +42,7 @@ class PurchaseReturnResource extends JsonResource
             'remark'       => $this->remark,
             'return_date'  => $this->return_date,
 
-            'details' => SaleReturnDetailResource::collection(
+            'details' => PurchaseReturnDetailResource::collection(
                 $this->whenLoaded('details')
             ),
 

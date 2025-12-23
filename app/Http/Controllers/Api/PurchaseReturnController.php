@@ -27,8 +27,8 @@ class PurchaseReturnController extends Controller
             "updatedBy",
         ]);
 
-        if ($request->filled("purchase_id")) {
-            $query->where("purchase_id", $request->customer_id);
+        if ($request->filled("supplier_id")) {
+            $query->where("supplier_id", $request->supplier_id);
         }
 
         if ($request->filled("status_id")) {
@@ -130,7 +130,7 @@ class PurchaseReturnController extends Controller
                     "inventory_id" => $purchaseDetail->inventory_id,
                     "product_id" => $purchaseDetail->product_id,
                     "quantity" => $item["quantity"],
-                    "price" => $purchaseDetail->discount_price > 0 ? $purchaseDetail->discount_price : $purchaseDetail->price,
+                    "price" => $purchaseDetail->price,
                     "total" => $lineTotal
                 ]);
 
@@ -164,7 +164,7 @@ class PurchaseReturnController extends Controller
             // Return resource (same style as PurchasesController)
             return new PurchaseReturnResource(
                 $purchaseReturn->fresh([
-                    "customer",
+                    "supplier",
                     "status",
                     "warehouse",
                     "paymentMethod",
@@ -188,15 +188,15 @@ class PurchaseReturnController extends Controller
 
     public function show(string $id)
     {
-        $sale_return = SaleReturn::with([
-            "customer",
+        $purchase_return = PurchaseReturn::with([
+            "supplier",
             "status",
             "paymentMethod",
             "details.product",
             "createdBy",
             "updatedBy",
         ])->findOrFail($id);
-        return new SaleReturnResource($sale_return);
+        return new PurchaseReturnResource($purchase_return);
     }
 
     public function update(Request $request, string $id)
@@ -206,24 +206,24 @@ class PurchaseReturnController extends Controller
             "updated_by" => "required|exists:users,id",
             "return_date" => "nullable|date",
             "products" => "required|array|min:1",
-            "products.*.sale_detail_id" => "required|exists:sale_details,id",
+            "products.*.purchase_detail_id" => "required|exists:purchase_details,id",
             "products.*.quantity" => "required|integer|min:1",
         ]);
 
         DB::beginTransaction();
 
         try {
-            // Lock sale return
-            $saleReturn = SaleReturn::with(["details", "details.saleDetail"])
+            // Lock purchase return
+            $purchaseReturn = PurchaseReturn::with(["details", "details.purchaseDetail"])
                 ->lockForUpdate()
                 ->findOrFail($id);
 
-            $sale = Sale::with("details")
+            $purchase = Purchase::with("details")
                 ->lockForUpdate()
-                ->findOrFail($saleReturn->sale_id);
+                ->findOrFail($purchaseReturn->purchase_id);
 
             // ROLLBACK previous return stock (same inventory_id only)
-            foreach ($saleReturn->details as $detail) {
+            foreach ($purchaseReturn->details as $detail) {
                 $inventory = Inventory::lockForUpdate()->find($detail->inventory_id);
 
                 if (!$inventory) {
@@ -236,8 +236,8 @@ class PurchaseReturnController extends Controller
 
                 StockTransaction::create([
                     "inventory_id" => $inventory->id,
-                    "reference_id" => $saleReturn->id,
-                    "reference_type" => "sale_return_update",
+                    "reference_id" => $purchaseReturn->id,
+                    "reference_type" => "purchase_return_update",
                     "quantity_change" => $detail->quantity,
                     "type" => "out",
                     "created_by" => $request->updated_by,
@@ -245,22 +245,22 @@ class PurchaseReturnController extends Controller
             }
 
             // Remove old return details
-            SaleReturnDetail::where("sale_return_id", $saleReturn->id)->delete();
+            PurchaseReturnDetail::where("purchase_return_id", $purchaseReturn->id)->delete();
 
             //Re-apply return (same inventory_id only)
             $totalReturnAmount = 0;
 
             foreach ($request->products as $item) {
-                $saleDetail = $sale->details
-                    ->where("id", $item["sale_detail_id"])
+                $purchaseDetail = $purchase->details
+                    ->where("id", $item["purchase_detail_id"])
                     ->firstOrFail();
 
                 // already returned except this return
-                $alreadyReturned = SaleReturnDetail::where("sale_detail_id", $saleDetail->id)
-                    ->where("sale_return_id", "!=", $saleReturn->id)
+                $alreadyReturned = PurchaseReturnDetail::where("purchase_detail_id", $purchaseDetail->id)
+                    ->where("purchase_return_id", "!=", $purchaseReturn->id)
                     ->sum("quantity");
 
-                $availableQty = $saleDetail->quantity - $alreadyReturned;
+                $availableQty = $purchaseDetail->quantity - $alreadyReturned;
 
                 if ($item["quantity"] > $availableQty) {
                     throw ValidationException::withMessages([
@@ -268,21 +268,21 @@ class PurchaseReturnController extends Controller
                     ]);
                 }
 
-                $lineTotal = $item["quantity"] * ($saleDetail->discount_price > 0 ? $saleDetail->discount_price : $saleDetail->price);
+                $lineTotal = $item["quantity"] * ($purchaseDetail->discount_price > 0 ? $purchaseDetail->discount_price : $purchaseDetail->price);
 
                 // save return detail
-                SaleReturnDetail::create([
-                    "sale_return_id" => $saleReturn->id,
-                    "sale_detail_id" => $saleDetail->id,
-                    "inventory_id" => $saleDetail->inventory_id,
-                    "product_id" => $saleDetail->product_id,
+                PurchaseReturnDetail::create([
+                    "purchase_return_id" => $purchaseReturn->id,
+                    "purchase_detail_id" => $purchaseDetail->id,
+                    "inventory_id" => $purchaseDetail->inventory_id,
+                    "product_id" => $purchaseDetail->product_id,
                     "quantity" => $item["quantity"],
-                    "price" => $saleDetail->discount_price > 0 ? $saleDetail->discount_price : $saleDetail->price,
+                    "price" => $purchaseDetail->price,
                     "total" => $lineTotal,
                 ]);
 
                 // 🔁 Put stock back to SAME inventory
-                $inventory = Inventory::lockForUpdate()->find($saleDetail->inventory_id);
+                $inventory = Inventory::lockForUpdate()->find($purchaseDetail->inventory_id);
 
                 if (!$inventory) {
                     throw new \Exception("Inventory not found for return");
@@ -294,8 +294,8 @@ class PurchaseReturnController extends Controller
 
                 StockTransaction::create([
                     "inventory_id" => $inventory->id,
-                    "reference_id" => $saleReturn->id,
-                    "reference_type" => "sale_return",
+                    "reference_id" => $purchaseReturn->id,
+                    "reference_type" => "purchase_return",
                     "quantity_change" => $item["quantity"],
                     "type" => "in",
                     "created_by" => $request->updated_by,
@@ -305,19 +305,19 @@ class PurchaseReturnController extends Controller
             }
 
             // Update
-            $saleReturn->update([
+            $purchaseReturn->update([
                 "remark" => $request->remark,
-                "return_date" => $request->return_date ?? $saleReturn->return_date,
-                "payment_id" => $request->payment_id ?? $saleReturn->payment_id,
+                "return_date" => $request->return_date ?? $purchaseReturn->return_date,
+                "payment_id" => $request->payment_id ?? $purchaseReturn->payment_id,
                 "total_amount" => $totalReturnAmount,
                 "updated_by" => $request->updated_by,
             ]);
 
             DB::commit();
 
-            return new SaleReturnResource(
-                $saleReturn->fresh([
-                    "customer",
+            return new PurchaseReturnResource(
+                $purchaseReturn->fresh([
+                    "supplier",
                     "status",
                     "warehouse",
                     "paymentMethod",
@@ -329,13 +329,13 @@ class PurchaseReturnController extends Controller
         } catch (\Exception $e) {
             DB::rollBack();
             return response()->json([
-                "error" => "Failed to update sale return",
+                "error" => "Failed to update purchase return",
                 "details" => $e->getMessage(),
             ], 500);
         }
     }
 
-    public function destroy(string $id)
+    public function destroy(Request $request, string $id)
     {
         $request->validate([
             'void_by' => 'required|exists:users,id',
@@ -344,18 +344,18 @@ class PurchaseReturnController extends Controller
         DB::beginTransaction();
 
         try {
-            // Lock Sale Return with details
-            $saleReturn = SaleReturn::with('details')->lockForUpdate()->findOrFail($id);
+            // Lock Purchase Return with details
+            $purchaseReturn = PurchaseReturn::with('details')->lockForUpdate()->findOrFail($id);
 
             // Prevent double void
-            if ($saleReturn->status_id == 8) {
+            if ($purchaseReturn->status_id == 8) {
                 return response()->json([
-                    'error' => 'Sale return already voided',
+                    'error' => 'Purchase return already voided',
                 ], 422);
             }
 
             // Rollback stock for each return detail (same inventory as return)
-            foreach ($saleReturn->details as $detail) {
+            foreach ($purchaseReturn->details as $detail) {
                 $inventory = Inventory::lockForUpdate()->find($detail->inventory_id);
 
                 if (!$inventory) {
@@ -368,16 +368,16 @@ class PurchaseReturnController extends Controller
 
                 StockTransaction::create([
                     'inventory_id' => $inventory->id,
-                    'reference_id' => $saleReturn->id,
-                    'reference_type' => 'sale_return_void',
+                    'reference_id' => $purchaseReturn->id,
+                    'reference_type' => 'purchase_return_void',
                     'quantity_change' => $detail->quantity,
                     'type' => 'out',
                     'created_by' => $request->void_by,
                 ]);
             }
 
-            // Mark Sale Return as VOID
-            $saleReturn->update([
+            // Mark Purchase Return as VOID
+            $purchaseReturn->update([
                 'status_id' => 8, // VOID
                 'void_by' => $request->void_by,
                 'void_at' => now(),
@@ -386,13 +386,13 @@ class PurchaseReturnController extends Controller
             DB::commit();
 
             return response()->json([
-                'message' => 'Sale return voided successfully',
+                'message' => 'Purchase return voided successfully',
             ], 200);
         } catch (\Exception $e) {
             DB::rollBack();
 
             return response()->json([
-                'error' => 'Failed to void sale return',
+                'error' => 'Failed to void purchase return',
                 'details' => $e->getMessage(),
             ], 500);
         }

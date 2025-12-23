@@ -22,7 +22,7 @@ class PurchaseReturnDetailResource extends JsonResource
             'product' => [
                 'id' => $this->product->id ?? null,
                 'name' => $this->product->name ?? null,
-                'price' => $this->purchase_price,
+                'price' => $this->product->purchase_price,
             ],
             'price' => $this->price,
             'quantity' => $this->quantity,
