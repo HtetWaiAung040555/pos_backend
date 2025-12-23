@@ -19,10 +19,10 @@ class PurchaseDetailResource extends JsonResource
             'product' => [
                 'id'   => $this->product->id,
                 'name' => $this->product->name,
-                'purchase_price' => $this->purchase_price,
-                'old_purchase_price' => $this->old_purchase_price,
-                'price' => $this->price,
-                'old_price' => $this->old_price
+                'purchase_price' => $this->product->purchase_price,
+                'old_purchase_price' => $this->product->old_purchase_price,
+                'price' => $this->product->price,
+                'old_price' => $this->product->old_price
             ],
 
             'price'    => $this->price,
