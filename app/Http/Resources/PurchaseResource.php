@@ -23,8 +23,8 @@ class PurchaseResource extends JsonResource
             ],
 
             'payment' => [
-                'id'   => optional($this->payment)->id,
-                'name' => optional($this->payment)->name,
+                'id'   => optional($this->paymentMethod)->id,
+                'name' => optional($this->paymentMethod)->name,
             ],
 
             'status' => [
