@@ -30,7 +30,10 @@ class ProductsController extends Controller
             'unit_id'       => 'nullable|exists:units,id',
             'sec_prop'      => 'nullable|string|max:255',
             'category_id'   => 'nullable|exists:categories,id',
+            'purchase_price' => 'sometimes|required|numeric|min:0',
+            'old_purchase_price' => 'sometimes|required|numeric|min:0',
             'price'         => 'sometimes|required|numeric|min:0',
+            'old_price'         => 'sometimes|required|numeric|min:0',
             'barcode'       => 'nullable|string|max:255|unique:products,barcode',
             'image'         => 'nullable|image|mimes:jpg,jpeg,png,gif|max:2048',
             'status_id'     => 'sometimes|required|exists:statuses,id',
@@ -44,7 +47,10 @@ class ProductsController extends Controller
             'unit_id'    => $request->unit ?? null,
             'sec_prop'   => $request->sec_prop ?? null,
             'category_id'=> $request->category_id ?? null,
-            'price'      => $request->price,
+            'purchase_price' => $request->purchase_price ?? 0,
+            'old_purchase_price' => $request->old_purchase_price ?? $request->purchase_price ?? 0,
+            'price'      => $request->price ?? 0,
+            'old_price'  => $request->old_price ?? $request->price ?? 0,
             'barcode'    => $request->barcode,
             'status_id'  => $request->status_id,
             'created_by' => $request->created_by,
@@ -86,14 +92,17 @@ class ProductsController extends Controller
             'unit_id'    => 'sometimes|exists:units,id',
             'sec_prop'   => 'nullable|string|max:255',
             'category_id'=> 'sometimes|exists:categories,id',
+            'purchase_price' => 'sometimes|required|numeric|min:0',
+            'old_purchase_price' => 'sometimes|required|numeric|min:0',
             'price'      => 'sometimes|required|numeric|min:0',
+            'old_price'  => 'sometimes|required|numeric|min:0',
             'barcode'    => 'nullable|string|max:255',
             'image'      => 'nullable|image|mimes:jpg,jpeg,png,gif|max:2048',
             'status_id'  => 'sometimes|exists:statuses,id',
             'updated_by' => 'nullable|exists:users,id'
         ]);
 
-        $data = $request->only(['name', 'unit_id', 'sec_prop', 'category_id', 'price', 'barcode', 'status_id', 'updated_by']);
+        $data = $request->only(['name', 'unit_id', 'sec_prop', 'category_id', 'purchase_price', 'old_purchase_price', 'price', 'old_price', 'barcode', 'status_id', 'updated_by']);
         $user_id = $request->updated_by ?? $product->created_by;
 
         if ($request->hasFile('image')) {
