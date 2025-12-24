@@ -174,7 +174,7 @@ class ProductsController extends Controller
                         'name'      => $p->name,
                         'price'     => $p->price,
                         'qty'       => (int) $p->qty,
-                        'image_url' => $p->image ? asset($p->image) : null,
+                        'image_url' => $p->image ? asset($p->image) : asset('assets/img/products/default.png'),
                     ];
                 })
             );
