@@ -46,7 +46,7 @@ class ProductsController extends Controller
         // Create product first (to get ID)
         $product = Product::create([
             'name'       => $request->name,
-            'unit_id'    => $request->unit ?? null,
+            'unit_id'    => $request->unit_id ?? null,
             'sec_prop'   => $request->sec_prop ?? null,
             'category_id'=> $request->category_id ?? null,
             'purchase_price' => $request->purchase_price ?? 0,

@@ -73,22 +73,29 @@ class PurchasesController extends Controller
             $totalAmount = 0;
             foreach ($request->products as $item) {
                 $product = Product::findOrFail($item['product_id']);
-                $price = $product->purchase_price;
+
+                // Determine purchase price to use
+                $incomingPrice = $item['purchase_price'] ?? null;
+
+                if ($incomingPrice && $incomingPrice > 0 && $incomingPrice != $product->purchase_price) {
+                    // Update product purchase price and store old_purchase_price
+                    $product->old_purchase_price = $product->purchase_price;
+                    $product->purchase_price = $incomingPrice;
+                    $product->save();
+                }
+
+                // Use updated or current price for total
+                $price = ($incomingPrice && $incomingPrice > 0) ? $incomingPrice : 0;
 
                 $totalAmount += $price * $item['quantity'];
             }
 
-            $paidAmount = $request->paid_amount ?? 0;
-            $dueAmount  = $totalAmount - $paidAmount;
-            if ($dueAmount < 0) $dueAmount = 0;
 
             // Create Purchase
             $purchase = Purchase::create([
                 'warehouse_id' => $request->warehouse_id,
                 'supplier_id' => $request->supplier_id,
                 'total_amount' => $totalAmount,
-                'paid_amount' => $paidAmount,
-                'due_amount' => $dueAmount,
                 'payment_id' => $request->payment_id,
                 'status_id' => $request->status_id,
                 'remark' => $request->remark,
@@ -179,30 +186,124 @@ class PurchasesController extends Controller
         return new PurchaseResource($purchase);
     }
 
+    // public function update(Request $request, string $id)
+    // {
+    //     $request->validate([
+    //         'payment_id' => 'sometimes|required|exists:payment_methods,id',
+    //         'status_id' => 'sometimes|required|exists:statuses,id',
+    //         'remark' => 'nullable|string|max:1000',
+    //         'purchase_date' => 'sometimes|date',
+    //         'updated_by' => 'required|exists:users,id'
+    //     ]);
+
+    //     $purchase = Purchase::findOrFail($id);
+
+    //     DB::beginTransaction();
+    //     try {
+
+    //         $purchase->update([
+    //             'payment_id'    => $request->payment_id,
+    //             'status_id'     => $request->status_id,
+    //             'remark'        => $request->remark,
+    //             'purchase_date' => $request->purchase_date,
+    //             'updated_by'    => $request->updated_by,
+    //         ]);
+
+    //         DB::commit();
+
+    //         return new PurchaseResource(
+    //             $purchase->fresh([
+    //                 'supplier',
+    //                 'warehouse',
+    //                 'status',
+    //                 'paymentMethod',
+    //                 'details.product',
+    //                 'createdBy',
+    //                 'updatedBy'
+    //             ])
+    //         );
+
+    //     } catch (\Exception $e) {
+    //         DB::rollBack();
+
+    //         return response()->json([
+    //             'error' => 'Failed to update purchase',
+    //             'details' => $e->getMessage()
+    //         ], 500);
+    //     }
+    // }
+
     public function update(Request $request, string $id)
     {
         $request->validate([
             'payment_id' => 'sometimes|required|exists:payment_methods,id',
-            'paid_amount' => 'sometimes|required|numeric|min:0',
             'status_id' => 'sometimes|required|exists:statuses,id',
             'remark' => 'nullable|string|max:1000',
             'purchase_date' => 'sometimes|date',
-            'updated_by' => 'required|exists:users,id'
+            'updated_by' => 'required|exists:users,id',
+            'products' => 'sometimes|array|min:1',
+            'products.*.product_id' => 'required|exists:products,id',
+            'products.*.quantity' => 'required|integer|min:1',
+            'products.*.purchase_price' => 'nullable|numeric|min:0',
+            'products.*.expired_date' => 'nullable|date',
         ]);
 
         $purchase = Purchase::findOrFail($id);
 
         DB::beginTransaction();
         try {
-
+            // Update purchase header
             $purchase->update([
-                'payment_id'    => $request->payment_id,
-                'paid_amount'   => $request->paid_amount,
-                'status_id'     => $request->status_id,
-                'remark'        => $request->remark,
-                'purchase_date' => $request->purchase_date,
+                'payment_id'    => $request->payment_id ?? $purchase->payment_id,
+                'status_id'     => $request->status_id ?? $purchase->status_id,
+                'remark'        => $request->remark ?? $purchase->remark,
+                'purchase_date' => $request->purchase_date ?? $purchase->purchase_date,
                 'updated_by'    => $request->updated_by,
             ]);
+
+            // Update inventory and optionally update purchase_price
+            if ($request->has('products')) {
+                foreach ($request->products as $item) {
+                    $product = Product::findOrFail($item['product_id']);
+
+                    // Update purchase_price if >0
+                    if (!empty($item['purchase_price']) && $item['purchase_price'] > 0 && $item['purchase_price'] != $product->purchase_price) {
+                        $product->old_purchase_price = $product->purchase_price;
+                        $product->purchase_price = $item['purchase_price'];
+                        $product->save();
+                    }
+
+                    // Adjust inventory
+                    $inventory = Inventory::firstOrCreate(
+                        [
+                            'product_id' => $item['product_id'],
+                            'warehouse_id' => $purchase->warehouse_id,
+                            'expired_date' => $item['expired_date'] ?? null,
+                        ],
+                        [
+                            'qty' => 0,
+                            'created_by' => $request->updated_by,
+                            'updated_by' => $request->updated_by,
+                        ]
+                    );
+
+                    // Add quantity to inventory
+                    $inventory->qty += $item['quantity'];
+                    $inventory->updated_by = $request->updated_by;
+                    $inventory->save();
+
+                    // Record stock transaction
+                    StockTransaction::create([
+                        'inventory_id'    => $inventory->id,
+                        'reference_id'    => $purchase->id,
+                        'reference_type'  => 'purchase_update',
+                        'quantity_change' => $item['quantity'],
+                        'type'            => 'in',
+                        'created_by'      => $request->updated_by,
+                        'updated_by'      => $request->updated_by,
+                    ]);
+                }
+            }
 
             DB::commit();
 
@@ -227,6 +328,7 @@ class PurchasesController extends Controller
             ], 500);
         }
     }
+
 
     public function destroy(Request $request, string $id)
     {
