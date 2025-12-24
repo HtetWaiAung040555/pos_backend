@@ -11,6 +11,7 @@ use App\Models\PurchaseDetail;
 use App\Models\StockTransaction;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 class PurchasesController extends Controller
 {
@@ -252,14 +253,31 @@ class PurchasesController extends Controller
 
         DB::beginTransaction();
         try {
-            // Update purchase header
-            $purchase->update([
-                'payment_id'    => $request->payment_id ?? $purchase->payment_id,
-                'status_id'     => $request->status_id ?? $purchase->status_id,
-                'remark'        => $request->remark ?? $purchase->remark,
-                'purchase_date' => $request->purchase_date ?? $purchase->purchase_date,
-                'updated_by'    => $request->updated_by,
-            ]);
+            $totalAmount = 0;
+            foreach ($purchase->details as $detail) {
+                $inventory = Inventory::lockForUpdate()->find($detail->inventory_id);
+
+                Log::info("Before Inventory:", $inventory->toArray());
+
+                if (!$inventory) {
+                    throw new \Exception("Inventory not found for rollback");
+                }
+
+                $inventory->qty -= $detail->quantity;
+                $inventory->updated_by = $request->updated_by;
+                $inventory->save();
+
+                StockTransaction::create([
+                    "inventory_id" => $inventory->id,
+                    "reference_id" => $purchase->id,
+                    "reference_type" => "purchase_update",
+                    "quantity_change" => $detail->quantity,
+                    "type" => "out",
+                    "created_by" => $request->updated_by,
+                ]);
+            }
+
+            PurchaseDetail::where("purchase_id", $purchase->id)->delete();
 
             // Update inventory and optionally update purchase_price
             if ($request->has('products')) {
@@ -273,24 +291,24 @@ class PurchasesController extends Controller
                         $product->save();
                     }
 
-                    // Adjust inventory
-                    $inventory = Inventory::firstOrCreate(
-                        [
-                            'product_id' => $item['product_id'],
-                            'warehouse_id' => $purchase->warehouse_id,
-                            'expired_date' => $item['expired_date'] ?? null,
-                        ],
-                        [
-                            'qty' => 0,
-                            'created_by' => $request->updated_by,
-                            'updated_by' => $request->updated_by,
-                        ]
-                    );
+                    $inventory = Inventory::lockForUpdate()->find($item['inventory_id']);
+
+                    Log::info("After Inventory:", $inventory->toArray());
 
                     // Add quantity to inventory
                     $inventory->qty += $item['quantity'];
+                    $inventory->expired_date = $item['expired_date'];
                     $inventory->updated_by = $request->updated_by;
                     $inventory->save();
+
+                    PurchaseDetail::create([
+                        'purchase_id' => $purchase->id,
+                        'inventory_id' => $inventory->id,
+                        'product_id' => $item['product_id'],
+                        'quantity' => $item['quantity'],
+                        'price' => $item['purchase_price'],
+                        'total' => $item['purchase_price'] * $item['quantity'],
+                    ]);
 
                     // Record stock transaction
                     StockTransaction::create([
@@ -302,8 +320,19 @@ class PurchasesController extends Controller
                         'created_by'      => $request->updated_by,
                         'updated_by'      => $request->updated_by,
                     ]);
+                    $totalAmount += $item['purchase_price'] * $item['quantity'];
                 }
             }
+
+            // Update purchase header
+            $purchase->update([
+                'payment_id'    => $request->payment_id ?? $purchase->payment_id,
+                'status_id'     => $request->status_id ?? $purchase->status_id,
+                'remark'        => $request->remark ?? $purchase->remark,
+                'total_amount' => $totalAmount,
+                'purchase_date' => $request->purchase_date ?? $purchase->purchase_date,
+                'updated_by'    => $request->updated_by,
+            ]);
 
             DB::commit();
 
