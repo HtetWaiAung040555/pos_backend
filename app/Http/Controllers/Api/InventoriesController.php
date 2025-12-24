@@ -7,6 +7,7 @@ use Illuminate\Http\Request;
 use App\Models\Inventory;
 use App\Http\Resources\InventoryResource;
 use App\Models\StockTransaction;
+use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
@@ -97,25 +98,6 @@ class InventoriesController extends Controller
         $inventory = Inventory::with(['product','warehouse','createdBy','updatedBy'])->findOrFail($id);
         return new InventoryResource($inventory);
     }
-
-    // public function update(Request $request, string $id)
-    // {
-    //     $inventory = Inventory::findOrFail($id);
-
-    //     $request->validate([
-    //         'name'       => 'sometimes|required|string|max:255',
-    //         'qty'        => 'sometimes|required|integer|min:0',
-    //         'expired_date' => 'sometimes|nullable|date',
-    //         'product_id' => 'sometimes|required|exists:products,id',
-    //         'warehouse_id'  => 'sometimes|required|exists:warehouses,id',
-    //         'updated_by' => 'nullable|exists:users,id',
-    //     ]);
-
-    //     $data = $request->only(['name','qty','product_id','warehouse_id','updated_by']);
-    //     $inventory->update($data);
-
-    //     return new InventoryResource($inventory->fresh(['product','warehouse','createdBy','updatedBy']));
-    // }
 
     public function update(Request $request, string $id)
     {
@@ -244,8 +226,6 @@ class InventoriesController extends Controller
         }
     }
 
-
-
     public function adjust(Request $request)
     {
         $request->validate([
@@ -292,4 +272,36 @@ class InventoriesController extends Controller
         }
     }
 
+    public function saleproducts(Request $request){
+        $warehouseId = $request->warehouse_id;
+
+        $query = Inventory::query()
+            ->select(
+                'product_id',
+                DB::raw('SUM(qty) as total_qty')
+            )
+            ->where('qty', '>', 0)
+            ->with('product')
+            ->groupBy('product_id');
+
+        if ($warehouseId) {
+            $query->where('warehouse_id', $warehouseId);
+        }
+
+        $products = $query->get();
+
+        return response()->json(
+            $products->map(function ($row) {
+                return [
+                    'product_id' => $row->product_id,
+                    'product'    => $row->product,
+                    'qty'        => (int) $row->total_qty,
+                    'price'      => $row->product->price,
+                ];
+            })
+        );
+    }
+
 }
+
+// ->where('status_id', '!=', '8')

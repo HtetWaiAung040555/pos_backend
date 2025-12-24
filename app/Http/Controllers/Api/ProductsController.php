@@ -5,7 +5,9 @@ use App\Models\Product;
 
 use App\Http\Controllers\Controller;
 use App\Http\Resources\ProductResource;
+use App\Models\Inventory;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Log;
 
@@ -142,4 +144,31 @@ class ProductsController extends Controller
             return response()->json(['error' => 'Product cannot be deleted'], 400);
         }
     }
+
+    public function saleproducts(Request $request){
+        $warehouseId = $request->warehouse_id;
+
+        $products = Product::query()
+            ->leftJoin('inventories', function ($join) use ($warehouseId) {
+                $join->on('products.id', '=', 'inventories.product_id')
+                    ->where('inventories.qty', '>', 0);
+
+                if ($warehouseId) {
+                    $join->where('inventories.warehouse_id', $warehouseId);
+                }
+            })
+            ->select(
+                'products.id',
+                'products.image',
+                'products.name',
+                'products.price',
+                DB::raw('COALESCE(SUM(inventories.qty), 0) as qty')
+            )
+            ->groupBy('products.id', 'products.image', 'products.name', 'products.price')
+            ->get();
+
+        return response()->json($products);
+    }
 }
+
+// ->having('qty', '>', 0) // only sellable products

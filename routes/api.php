@@ -66,6 +66,7 @@ Route::middleware(['auth:sanctum'])->group(function () {
 
     Route::apiResource('/categories', CategoriesController::class);
 
+    Route::get('/products/saleproducts', [ProductsController::class, 'saleproducts']);
     Route::apiResource('/products', ProductsController::class);
     // Route::get('/products', [ProductsController::class, 'index']);
     // Route::get('/products/{id}', [ProductsController::class, 'show']);
@@ -75,6 +76,7 @@ Route::middleware(['auth:sanctum'])->group(function () {
 
     Route::get('/stock_transactions', [StockTransactionController::class, 'index']);
 
+    // Route::get('/inventories/saleproducts', [InventoriesController::class, 'saleproducts']);
     Route::post('/inventories/adjust', [InventoriesController::class, 'adjust']);
     Route::apiResource('/inventories', InventoriesController::class);
 
