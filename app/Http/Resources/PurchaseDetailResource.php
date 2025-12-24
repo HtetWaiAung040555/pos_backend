@@ -14,16 +14,20 @@ class PurchaseDetailResource extends JsonResource
 
             'purchase_id' => $this->purchase_id,
 
-            'inventory' => $this->inventory_id,
+            'inventory' => $this->inventory ? [
+                'id' => $this->inventory->id,
+                'warehouse_id' => $this->inventory->warehouse_id,
+                'expired_date' => $this->inventory->expired_date
+            ] : null,
 
-            'product' => [
-                'id'   => $this->product->id,
+            'product' => $this->product ? [
+                'id' => $this->product->id,
                 'name' => $this->product->name,
                 'purchase_price' => $this->product->purchase_price,
                 'old_purchase_price' => $this->product->old_purchase_price,
                 'price' => $this->product->price,
                 'old_price' => $this->product->old_price
-            ],
+            ] : null,
 
             'price'    => $this->price,
             'quantity' => $this->quantity,
