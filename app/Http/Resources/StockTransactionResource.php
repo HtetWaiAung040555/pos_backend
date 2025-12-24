@@ -24,9 +24,7 @@ class StockTransactionResource extends JsonResource
                         "unit" => $this->inventory->product->unit,
                         "price" => $this->inventory->product->price,
                         "barcode" => $this->inventory->product->barcode,
-                        "image_url" => $this->inventory->product->image
-                            ? asset($this->inventory->product->image)
-                            : null,
+                        "image_url" => $this->inventory->product->image ? url($this->inventory->product->image) : url('assets/img/products/default.png'),
                     ]
                     : null,
 

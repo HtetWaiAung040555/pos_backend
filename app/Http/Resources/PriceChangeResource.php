@@ -44,7 +44,7 @@ class PriceChangeResource extends JsonResource
                     'sec_prop' => $product->sec_prop,
                     'price' => $product->price,
                     'barcode' => $product->barcode,
-                    'image_url' => $product->image ? asset($this->image) : null,
+                    'image_url' => $product->image ? url($this->image) : url('assets/img/products/default.png'),
                     'status' => $product->status ? [
                         'id'   => $product->status->id,
                         'name' => $product->status->name,

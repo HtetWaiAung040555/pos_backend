@@ -28,7 +28,7 @@ class ProductResource extends JsonResource
             'price'      => $this->price,
             'old_price'  => $this->old_price,
             'barcode'    => $this->barcode,
-            'image_url'  => $this->image ? asset($this->image) : null,
+            'image_url'  => $this->image ? url($this->image) : url('assets/img/products/default.png'),
             
             'status' => [
                 'id' => $this->status->id ?? null,
