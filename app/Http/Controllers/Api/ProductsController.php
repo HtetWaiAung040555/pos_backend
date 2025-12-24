@@ -167,7 +167,17 @@ class ProductsController extends Controller
             ->groupBy('products.id', 'products.image', 'products.name', 'products.price')
             ->get();
 
-        return response()->json($products);
+            return response()->json(
+                $products->map(function ($p) {
+                    return [
+                        'id'        => $p->id,
+                        'name'      => $p->name,
+                        'price'     => $p->price,
+                        'qty'       => (int) $p->qty,
+                        'image_url' => $p->image ? asset($p->image) : null,
+                    ];
+                })
+            );
     }
 }
 
