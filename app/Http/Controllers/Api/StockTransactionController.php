@@ -12,7 +12,6 @@ class StockTransactionController extends Controller
 {
     public function index(Request $request)
     {
-        Log::info($request->all());
         $query = StockTransaction::query()->with(["inventory.product"]);
 
         // 🔍 Filter by inventory

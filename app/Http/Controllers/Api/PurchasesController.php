@@ -164,7 +164,6 @@ class PurchasesController extends Controller
 
         } catch (\Exception $e) {
             DB::rollBack();
-            // Log::error($e->getMessage());
 
             return response()->json([
                 'error' => 'Failed to create purchase',
@@ -257,8 +256,6 @@ class PurchasesController extends Controller
             foreach ($purchase->details as $detail) {
                 $inventory = Inventory::lockForUpdate()->find($detail->inventory_id);
 
-                Log::info("Before Inventory:", $inventory->toArray());
-
                 if (!$inventory) {
                     throw new \Exception("Inventory not found for rollback");
                 }
@@ -292,8 +289,6 @@ class PurchasesController extends Controller
                     }
 
                     $inventory = Inventory::lockForUpdate()->find($item['inventory_id']);
-
-                    Log::info("After Inventory:", $inventory->toArray());
 
                     // Add quantity to inventory
                     $inventory->qty += $item['quantity'];

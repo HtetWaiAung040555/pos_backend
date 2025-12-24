@@ -111,8 +111,6 @@ class SaleController extends Controller
                     ->orderBy('created_at')
                     ->lockForUpdate()
                     ->get();
-
-                Log::info($inventories->all());
     
                 // 2️⃣ Deduct from available inventory
                 foreach ($inventories as $inventory) {
@@ -315,8 +313,6 @@ class SaleController extends Controller
             $sale->void_at = now();
             $sale->void_by = $request->void_by;
             $sale->save();
-
-            Log::info($sale->toArray());
 
             // 2. Restore stock to inventory
             foreach ($sale->details as $detail) {

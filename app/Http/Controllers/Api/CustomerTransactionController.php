@@ -32,8 +32,6 @@ class CustomerTransactionController extends Controller
 
     public function store(Request $request)
     {
-        Log::info($request->all());
-
         $request->validate([
             "customer_id" => "required|exists:customers,id",
             "amount" => "required|numeric|min:0",
@@ -73,8 +71,6 @@ class CustomerTransactionController extends Controller
                     "updatedBy",
                 ]),
             );
-
-            Log::info($request);
         } catch (\Exception $e) {
             DB::rollBack();
             return response()->json(
@@ -118,8 +114,6 @@ class CustomerTransactionController extends Controller
 
         $oldCustomer = Customer::findOrFail($transaction->customer_id);
 
-        Log::info($oldCustomer->all());
-
         $oldCustomer->balance -= $transaction->amount;
         $oldCustomer->save();
 
@@ -138,8 +132,6 @@ class CustomerTransactionController extends Controller
             $transaction->save();
 
             $customer = Customer::findOrFail($transaction->customer_id);
-
-            Log::info($customer->all());
 
             $customer->balance += $transaction->amount;
             $customer->save();
