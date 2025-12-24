@@ -64,12 +64,12 @@ class ProductsController extends Controller
             $product->save();
         }
 
-        return new ProductResource($product->fresh(['unit','category', 'status', 'createdBy', 'updatedBy']));
+        return new ProductResource($product->fresh(['unit', 'category', 'status', 'createdBy', 'updatedBy']));
     }
 
     public function show(string $id)
     {
-        $product = Product::with(['unit','category', 'status', 'createdBy', 'updatedBy'])->findOrFail($id);
+        $product = Product::with(['unit', 'category', 'status', 'createdBy', 'updatedBy'])->findOrFail($id);
         return new ProductResource($product);
     }
 
@@ -113,7 +113,7 @@ class ProductsController extends Controller
 
         $product->update($data);
 
-        return new ProductResource($product->fresh(['unit','category', 'status', 'createdBy', 'updatedBy']));
+        return new ProductResource($product->fresh(['unit', 'category', 'status', 'createdBy', 'updatedBy']));
     }
 
     public function destroy(string $id)
