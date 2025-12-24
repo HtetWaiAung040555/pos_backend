@@ -9,16 +9,19 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('products', function (Blueprint $table) {
-            $table->decimal('purchase_price',11,2)->after('category_id');
-            $table->decimal('old_purchase_price',11,2)->after('purchase_price');
-            $table->decimal('old_price')->after('price');
+            $table->foreignId('unit_id')->nullable()->after('name')->constrained('units')->restrictOnDelete();
+            
+            $table->dropColumn('unit');
         });
     }
 
     public function down(): void
     {
         Schema::table('products', function (Blueprint $table) {
-            
+            $table->string('unit')->after('name');
+
+            $table->dropForeign(['unit_id']);
+            $table->dropColumn('unit_id');
         });
     }
 };

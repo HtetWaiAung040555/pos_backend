@@ -13,7 +13,7 @@ class Product extends Model
     protected $primaryKey = 'id';
     protected $fillable = [
         'name',
-        'unit',
+        'unit_id',
         'sec_prop',
         'category_id',
         'purchase_price',
@@ -26,6 +26,10 @@ class Product extends Model
         'created_by',
         'updated_by'
     ];
+
+    public function unit(){
+        return $this->belongsTo(Unit::class);
+    }
 
     public function category() {
         return $this->belongsTo(Category::class);

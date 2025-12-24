@@ -5,22 +5,15 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
-class Promotion extends Model
+class Unit extends Model
 {
     use HasFactory;
 
-    protected $table = 'promotions';
+    protected $table = 'units';
     protected $primaryKey = 'id';
     protected $fillable = [
         'name',
-        'description',
-        'discount_type',
-        'discount_value',
-        'start_at',
-        'end_at',
         'status_id',
-        'void_at',
-        'void_by',
         'created_by',
         'updated_by'
     ];
@@ -35,13 +28,5 @@ class Promotion extends Model
 
     public function updatedBy() { 
         return $this->belongsTo(User::class, 'updated_by'); 
-    }
-
-    public function products() {
-        return $this->belongsToMany(Product::class, 'promotions_products', 'promotion_id', 'product_id');
-    }
-
-    public function voidBy(){
-        return $this->belongsTo(User::class, 'void_by');
     }
 }

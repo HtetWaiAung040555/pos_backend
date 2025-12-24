@@ -20,15 +20,14 @@ class ProductsController extends Controller
     public function store(Request $request)
     {
         $request->merge([
+            'unit_id' => $request->unit_id ?: null,
             'barcode' => $request->barcode ?: null,
             'category_id' => $request->category_id ?: null,
         ]);
 
-        Log::info("data", $request->all());
-
         $request->validate([
             'name'          => 'required|string|max:255',
-            'unit'          => 'required|string|max:255',
+            'unit_id'       => 'nullable|exists:units,id',
             'sec_prop'      => 'nullable|string|max:255',
             'category_id'   => 'nullable|exists:categories,id',
             'price'         => 'sometimes|required|numeric|min:0',
@@ -42,7 +41,7 @@ class ProductsController extends Controller
         // Create product first (to get ID)
         $product = Product::create([
             'name'       => $request->name,
-            'unit'       => $request->unit,
+            'unit_id'    => $request->unit ?? null,
             'sec_prop'   => $request->sec_prop ?? null,
             'category_id'=> $request->category_id ?? null,
             'price'      => $request->price,
@@ -65,12 +64,12 @@ class ProductsController extends Controller
             $product->save();
         }
 
-        return new ProductResource($product->fresh(['category', 'status', 'createdBy', 'updatedBy']));
+        return new ProductResource($product->fresh(['unit','category', 'status', 'createdBy', 'updatedBy']));
     }
 
     public function show(string $id)
     {
-        $product = Product::with(['category', 'status', 'createdBy', 'updatedBy'])->findOrFail($id);
+        $product = Product::with(['unit','category', 'status', 'createdBy', 'updatedBy'])->findOrFail($id);
         return new ProductResource($product);
     }
 
@@ -84,7 +83,7 @@ class ProductsController extends Controller
 
         $request->validate([
             'name'       => 'sometimes|required|string|max:255',
-            'unit'       => 'nullable|string|max:255',
+            'unit_id'    => 'sometimes|exists:units,id',
             'sec_prop'   => 'nullable|string|max:255',
             'category_id'=> 'sometimes|exists:categories,id',
             'price'      => 'sometimes|required|numeric|min:0',
@@ -94,7 +93,7 @@ class ProductsController extends Controller
             'updated_by' => 'nullable|exists:users,id'
         ]);
 
-        $data = $request->only(['name', 'unit', 'sec_prop', 'category_id', 'price', 'barcode', 'status_id', 'updated_by']);
+        $data = $request->only(['name', 'unit_id', 'sec_prop', 'category_id', 'price', 'barcode', 'status_id', 'updated_by']);
         $user_id = $request->updated_by ?? $product->created_by;
 
         if ($request->hasFile('image')) {
@@ -114,7 +113,7 @@ class ProductsController extends Controller
 
         $product->update($data);
 
-        return new ProductResource($product->fresh(['category', 'status', 'createdBy', 'updatedBy']));
+        return new ProductResource($product->fresh(['unit','category', 'status', 'createdBy', 'updatedBy']));
     }
 
     public function destroy(string $id)
