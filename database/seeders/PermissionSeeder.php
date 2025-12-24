@@ -69,7 +69,25 @@ class PermissionSeeder extends Seeder
             ['id' => 56, 'name' => 'Promotion', 'action' => 'Create', 'created_by' => 1, 'updated_by' => 1],
             ['id' => 57, 'name' => 'Promotion', 'action' => 'Update', 'created_by' => 1, 'updated_by' => 1],
             ['id' => 58, 'name' => 'Promotion', 'action' => 'Delete', 'created_by' => 1, 'updated_by' => 1],
-            
+            ['id' => 59, 'name' => 'Stock adjustment', 'action' => 'View', 'created_by' => 1, 'updated_by' => 1],
+            ['id' => 60, 'name' => 'Stock adjustment', 'action' => 'Create', 'created_by' => 1, 'updated_by' => 1],
+            ['id' => 61, 'name' => 'Sales return', 'action' => 'View', 'created_by' => 1, 'updated_by' => 1],
+            ['id' => 62, 'name' => 'Sales return', 'action' => 'Create', 'created_by' => 1, 'updated_by' => 1],
+            ['id' => 63, 'name' => 'Sales return', 'action' => 'Update', 'created_by' => 1, 'updated_by' => 1],
+            ['id' => 64, 'name' => 'Sales return', 'action' => 'Delete', 'created_by' => 1, 'updated_by' => 1],
+            ['id' => 65, 'name' => 'Stock transaction', 'action' => 'View', 'created_by' => 1, 'updated_by' => 1],
+            ['id' => 66, 'name' => 'Supplier', 'action' => 'View', 'created_by' => 1, 'updated_by' => 1],
+            ['id' => 67, 'name' => 'Supplier', 'action' => 'Create', 'created_by' => 1, 'updated_by' => 1],
+            ['id' => 68, 'name' => 'Supplier', 'action' => 'Update', 'created_by' => 1, 'updated_by' => 1],
+            ['id' => 69, 'name' => 'Supplier', 'action' => 'Delete', 'created_by' => 1, 'updated_by' => 1],
+            ['id' => 70, 'name' => 'Purchase return', 'action' => 'View', 'created_by' => 1, 'updated_by' => 1],
+            ['id' => 71, 'name' => 'Purchase return', 'action' => 'Create', 'created_by' => 1, 'updated_by' => 1],
+            ['id' => 72, 'name' => 'Purchase return', 'action' => 'Update', 'created_by' => 1, 'updated_by' => 1],
+            ['id' => 73, 'name' => 'Purchase return', 'action' => 'Delete', 'created_by' => 1, 'updated_by' => 1],
+            ['id' => 74, 'name' => 'Unit', 'action' => 'View', 'created_by' => 1, 'updated_by' => 1],
+            ['id' => 75, 'name' => 'Unit', 'action' => 'Create', 'created_by' => 1, 'updated_by' => 1],
+            ['id' => 76, 'name' => 'Unit', 'action' => 'Update', 'created_by' => 1, 'updated_by' => 1],
+            ['id' => 77, 'name' => 'Unit', 'action' => 'Delete', 'created_by' => 1, 'updated_by' => 1]
         ];
 
         foreach ($permissions as $permission) {
