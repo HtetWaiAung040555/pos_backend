@@ -15,7 +15,7 @@ return new class extends Migration
             $table->id();
             $table->string('purchase_id');
             $table->foreign('purchase_id')->references('id')->on('purchases')->onDelete('cascade');
-            $table->foreignId('invertory_id')->constrained('inventories')->restrictOnDelete();
+            $table->foreignId('inventory_id')->constrained('inventories')->restrictOnDelete();
             $table->foreignId('product_id')->constrained('products')->restrictOnDelete();
             $table->integer('quantity');
             $table->decimal('price',11,2);

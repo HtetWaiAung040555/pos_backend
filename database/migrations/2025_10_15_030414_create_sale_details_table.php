@@ -12,7 +12,7 @@ return new class extends Migration
             $table->id();
             $table->string('sale_id');
             $table->foreign('sale_id')->references('id')->on('sales')->onDelete('cascade');
-            $table->foreignId('invertory_id')->constrained('inventories')->restrictOnDelete();
+            $table->foreignId('inventory_id')->constrained('inventories')->restrictOnDelete();
             $table->foreignId('product_id')->constrained('products')->restrictOnDelete();
             $table->integer('quantity');
             $table->decimal('price',11,2);

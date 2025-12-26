@@ -18,6 +18,7 @@ return new class extends Migration
                     'opening',
                     'opening_adjustment',
                     'adjustment',
+                    'purchase_update',
                     'purchase_void',
                     'purchase_return',
                     'purchase_return_update',
