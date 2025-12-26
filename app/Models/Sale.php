@@ -42,15 +42,17 @@ class Sale extends Model
         static::creating(function ($sale) {
             $dateCode = Carbon::now()->format('dmy');
 
-            $lastSale = self::where('id', 'like', "S-{$dateCode}%")
+            $userId = $sale->created_by;
+
+            $lastSale = self::where('id', 'like', "S-{$userId}{$dateCode}%")
                 ->orderBy('id', 'desc')
                 ->first();
 
             $nextNumber = $lastSale
-                ? intval(substr($lastSale->id, -5)) + 1
+                ? intval(substr($lastSale->id, -3)) + 1
                 : 1;
 
-            $sale->id = 'S-' . $dateCode . str_pad($nextNumber, 5, '0', STR_PAD_LEFT);
+            $sale->id = 'S-' . $userId . $dateCode . str_pad($nextNumber, 3, '0', STR_PAD_LEFT);
         });
     }
 
