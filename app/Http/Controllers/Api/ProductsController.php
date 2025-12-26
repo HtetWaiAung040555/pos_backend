@@ -93,7 +93,7 @@ class ProductsController extends Controller
             'name'       => 'sometimes|required|string|max:255',
             'unit_id'    => 'sometimes|exists:units,id',
             'sec_prop'   => 'nullable|string|max:255',
-            'category_id'=> 'sometimes|exists:categories,id',
+            'category_id'=> 'nullable|exists:categories,id',
             'purchase_price' => 'sometimes|required|numeric|min:0',
             'old_purchase_price' => 'sometimes|required|numeric|min:0',
             'price'      => 'sometimes|required|numeric|min:0',
@@ -162,9 +162,10 @@ class ProductsController extends Controller
                 'products.image',
                 'products.name',
                 'products.price',
+                'products.barcode',
                 DB::raw('COALESCE(SUM(inventories.qty), 0) as qty')
             )
-            ->groupBy('products.id', 'products.image', 'products.name', 'products.price')
+            ->groupBy('products.id', 'products.image', 'products.name', 'products.price', 'products.barcode')
             ->get();
 
             return response()->json(
@@ -175,6 +176,7 @@ class ProductsController extends Controller
                         'price'     => $p->price,
                         'qty'       => (int) $p->qty,
                         'image_url' => $p->image ? asset($p->image) : asset('assets/img/products/default.png'),
+                        'barcode' => $p->barcode,
                     ];
                 })
             );
