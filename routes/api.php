@@ -15,6 +15,7 @@ use App\Http\Controllers\Api\UsersController;
 use App\Http\Controllers\Api\StatusesController;
 use App\Http\Controllers\Api\WarehousesController;
 use App\Http\Controllers\Api\CustomerTransactionController;
+use App\Http\Controllers\Api\PriceChangesController;
 use App\Http\Controllers\Api\PromotionsController;
 use App\Http\Controllers\Api\PurchaseReturnController;
 use App\Http\Controllers\Api\PurchasesController;
@@ -98,6 +99,8 @@ Route::middleware(['auth:sanctum'])->group(function () {
     Route::apiResource('/payment_methods', PaymentMethodController::class);
 
     Route::apiResource('/customers_transactions', CustomerTransactionController::class);
+
+    Route::apiResource('/pricechanges', PriceChangesController::class);
 
     Route::get('/promotions/checkprice/{id}', [PromotionsController::class, 'checkPrice']);
     Route::apiResource('/promotions', PromotionsController::class);

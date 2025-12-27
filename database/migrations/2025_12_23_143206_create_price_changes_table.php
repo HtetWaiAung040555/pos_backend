@@ -11,8 +11,8 @@ return new class extends Migration
         Schema::create('price_changes', function (Blueprint $table) {
             $table->id();
             $table->text('description')->nullable();
-            $table->dateTime('start_at');
-            $table->dateTime('end_at');
+            $table->dateTime('start_at')->nullable();
+            $table->dateTime('end_at')->nullable();
             $table->unsignedBigInteger('status_id')->default(1);
             $table->dateTime('void_at')->nullable();
             $table->unsignedBigInteger('void_by')->nullable();
