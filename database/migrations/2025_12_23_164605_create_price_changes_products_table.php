@@ -15,7 +15,6 @@ return new class extends Migration
             $table->id();
             $table->foreignId('price_change_id')->constrained('price_changes')->cascadeOnDelete();
             $table->foreignId('product_id')->constrained('products')->cascadeOnDelete();
-            $table->enum('type', ['sale','purchase'])->nullable();
             $table->decimal('old_price', 15, 2);
             $table->decimal('new_price', 15, 2);
             $table->timestamps();
@@ -27,6 +26,6 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::dropIfExists('price_chages_products');
+        Schema::dropIfExists('price_changes_products');
     }
 };
