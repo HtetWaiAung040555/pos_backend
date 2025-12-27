@@ -35,7 +35,7 @@ class PriceChange extends Model
     }
 
     public function products() {
-        return $this->belongsToMany(Product::class, 'price_changes_products', 'price_change_id', 'product_id');
+        return $this->belongsToMany(Product::class, 'price_changes_products', 'price_change_id', 'product_id')->withPivot('type', 'old_price', 'new_price')->withTimestamps();;
     }
 
     public function voidBy(){
