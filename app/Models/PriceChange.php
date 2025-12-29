@@ -9,10 +9,9 @@ class PriceChange extends Model
 {
     use HasFactory;
 
-    protected $table = 'price_changes';
-    protected $primaryKey = 'id';
     protected $fillable = [
         'description',
+        'type',
         'start_at',
         'end_at',
         'status_id',
@@ -22,23 +21,30 @@ class PriceChange extends Model
         'updated_by'
     ];
 
-    public function status() {
+    public function status()
+    {
         return $this->belongsTo(Status::class);
     }
 
-    public function createdBy() { 
-        return $this->belongsTo(User::class, 'created_by'); 
+    public function products()
+    {
+        return $this->belongsToMany(Product::class, 'price_changes_products', 'price_change_id', 'product_id')
+            ->withPivot('old_price', 'new_price')
+            ->withTimestamps();
     }
 
-    public function updatedBy() { 
-        return $this->belongsTo(User::class, 'updated_by'); 
+    public function createdBy()
+    {
+        return $this->belongsTo(User::class, 'created_by');
     }
 
-    public function products() {
-        return $this->belongsToMany(Product::class, 'price_changes_products', 'price_change_id', 'product_id')->withPivot('type', 'old_price', 'new_price')->withTimestamps();;
+    public function updatedBy()
+    {
+        return $this->belongsTo(User::class, 'updated_by');
     }
 
-    public function voidBy(){
+    public function voidBy()
+    {
         return $this->belongsTo(User::class, 'void_by');
     }
 }
