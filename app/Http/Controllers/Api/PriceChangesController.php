@@ -156,7 +156,7 @@ class PriceChangesController extends Controller
     
     public function update(Request $request, string $id)
     {
-        $priceChange = PriceChange::findOrFail($id); // <--- fetch model
+        $priceChange = PriceChange::findOrFail($id);
 
         $request->validate([
             'description' => 'nullable|string',
