@@ -50,4 +50,12 @@ class Product extends Model
     public function promotions() {
         return $this->belongsToMany(Promotion::class, 'promotions_products', 'product_id', 'promotion_id');
     }
+
+    public function priceChanges()
+    {
+        return $this->belongsToMany(PriceChange::class, 'price_changes_products', 'product_id','price_change_id')
+        ->withPivot('old_price', 'new_price')
+        ->withTimestamps();
+    }
+
 }

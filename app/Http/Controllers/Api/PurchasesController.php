@@ -106,27 +106,102 @@ class PurchasesController extends Controller
             ]);
 
             // Stock IN + details
+            // foreach ($request->products as $item) {
+
+            //     $product = Product::findOrFail($item['product_id']);
+            //     $price = $product->purchase_price;
+            
+            //     $inventory = Inventory::firstOrCreate(
+            //         [
+            //             'product_id' => $item['product_id'],
+            //             'warehouse_id' => $request->warehouse_id,
+            //             'expired_date' => $item['expired_date'] ?? null,
+            //         ],
+            //         [
+            //             'qty' => 0,
+            //             'created_by' => $request->created_by,
+            //             'updated_by' => $request->created_by,
+            //         ]
+            //     );
+            
+            //     $inventory->qty += $item['quantity'];
+            //     $inventory->updated_by = $request->created_by;
+            //     $inventory->save();
+            
+            //     PurchaseDetail::create([
+            //         'purchase_id' => $purchase->id,
+            //         'inventory_id' => $inventory->id,
+            //         'product_id' => $item['product_id'],
+            //         'quantity' => $item['quantity'],
+            //         'price' => $price,
+            //         'total' => $price * $item['quantity'],
+            //     ]);
+            
+            //     StockTransaction::create([
+            //         'inventory_id'    => $inventory->id,
+            //         'reference_id'    => $purchase->id,
+            //         'reference_type'  => 'purchase',
+            //         'quantity_change' => $item['quantity'],
+            //         'type'            => 'in',
+            //         'created_by'      => $request->created_by,
+            //         'updated_by'      => $request->created_by,
+            //     ]);
+            // }
+
             foreach ($request->products as $item) {
 
                 $product = Product::findOrFail($item['product_id']);
                 $price = $product->purchase_price;
-            
-                $inventory = Inventory::firstOrCreate(
-                    [
-                        'product_id' => $item['product_id'],
+
+                $remainingQty = $item['quantity'];
+
+                $negativeInventories = Inventory::where('product_id', $item['product_id'])
+                ->where('warehouse_id', $request->warehouse_id)
+                ->where('qty', '<', 0)
+                ->orderBy('created_at')
+                ->lockForUpdate()
+                ->get();
+
+                foreach ($negativeInventories as $negInv) {
+                    if ($remainingQty <= 0) break;
+
+                    $offsetQty = min(abs($negInv->qty), $remainingQty);
+
+                    $negInv->qty += $offsetQty;
+                    $negInv->updated_by = $request->created_by;
+                    $negInv->save();
+
+                    StockTransaction::create([
+                        'inventory_id'    => $negInv->id,
+                        'reference_id'    => $purchase->id ?? null,
+                        'reference_type'  => 'purchase',
+                        'quantity_change' => $offsetQty,
+                        'type'            => 'in',
+                        'created_by'      => $request->created_by
+                    ]);
+
+                    $remainingQty -= $offsetQty;
+                }
+
+                if ($remainingQty > 0) {
+                    $inventory = Inventory::create([
+                        'product_id'   => $item['product_id'],
                         'warehouse_id' => $request->warehouse_id,
-                        'expired_date' => $item['expired_date'] ?? null,
-                    ],
-                    [
-                        'qty' => 0,
-                        'created_by' => $request->created_by,
-                        'updated_by' => $request->created_by,
-                    ]
-                );
-            
-                $inventory->qty += $item['quantity'];
-                $inventory->updated_by = $request->created_by;
-                $inventory->save();
+                        'expired_date'  => $item['expired_date'],
+                        'qty'          => $remainingQty,
+                        'created_by'   => $request->created_by,
+                        'updated_by' => $request->updated_by ?? $request->created_by
+                    ]);
+
+                    StockTransaction::create([
+                        'inventory_id'    => $inventory->id,
+                        'reference_id'    => $purchase->id ?? null,
+                        'reference_type'  => 'purchase',
+                        'quantity_change' => $remainingQty,
+                        'type'            => 'in',
+                        'created_by'      => $request->created_by
+                    ]);
+                }
             
                 PurchaseDetail::create([
                     'purchase_id' => $purchase->id,
@@ -136,16 +211,7 @@ class PurchasesController extends Controller
                     'price' => $price,
                     'total' => $price * $item['quantity'],
                 ]);
-            
-                StockTransaction::create([
-                    'inventory_id'    => $inventory->id,
-                    'reference_id'    => $purchase->id,
-                    'reference_type'  => 'purchase',
-                    'quantity_change' => $item['quantity'],
-                    'type'            => 'in',
-                    'created_by'      => $request->created_by,
-                    'updated_by'      => $request->created_by,
-                ]);
+
             }
 
             DB::commit();
