@@ -25,6 +25,17 @@ class CustomerTransactionController extends Controller
             $query->where("customer_id", $request->customer_id);
         }
 
+        if ($request->filled('start_date') && $request->filled('end_date')) {
+            $query->whereBetween('pay_date', [
+                $request->start_date,
+                $request->end_date
+            ]);
+        } elseif ($request->filled('start_date')) {
+            $query->where('pay_date', '>=', $request->start_date);
+        } elseif ($request->filled('end_date')) {
+            $query->where('pay_date', '<=', $request->end_date);
+        }
+
         return CustomerTransactionResource::collection(
             $query->orderBy("id", "desc")->get(),
         );
