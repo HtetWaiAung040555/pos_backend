@@ -67,7 +67,7 @@ class SaleController extends Controller
             $totalAmount = 0;
             foreach ($request->products as $item) {
                 $product = Product::findOrFail($item['product_id']);
-                $totalAmount += ($item['promotion_id']? $item['discount_price'] : $product->price) * $item['quantity'];
+                $totalAmount += ($item['promotion_id']? $item['discount_price'] : $item['price']) * $item['quantity'];
             }
 
             // 2. Calculate change (due_amount)
@@ -94,10 +94,10 @@ class SaleController extends Controller
             // 4. Create Sale Details and Stock Transactions
             foreach ($request->products as $item) {
                 $product = Product::findOrFail($item['product_id']);
-                $finalPrice = $product->price;
+                $finalPrice = $item['price'];
 
                 if (!empty($item['promotion_id'])) {
-                    $finalPrice = $product->price - $item['discount_amount'];
+                    $finalPrice = $item['price'] - $item['discount_amount'];
                 }
 
                 $remainingQty = $item['quantity'];
@@ -129,7 +129,7 @@ class SaleController extends Controller
                         'inventory_id' => $inventory->id,
                         'product_id' => $product->id,
                         'quantity' => $item['quantity'],
-                        'price' => $product->price,
+                        'price' => $item['price'],
                         'discount_amount' => $item['discount_amount'] ?? 0,
                         'discount_price' => $item['discount_price'] ?? 0,
                         'promotion_id' => $item['promotion_id'] ?? null,
@@ -173,7 +173,7 @@ class SaleController extends Controller
                         'inventory_id' => $negativeInventory->id,
                         'product_id' => $product->id,
                         'quantity' => $item['quantity'],
-                        'price' => $product->price,
+                        'price' => $item['price'],
                         'discount_amount' => $item['discount_amount'] ?? 0,
                         'discount_price' => $item['discount_price'] ?? 0,
                         'promotion_id' => $item['promotion_id'] ?? null,

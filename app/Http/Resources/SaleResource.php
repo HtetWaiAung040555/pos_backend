@@ -34,6 +34,7 @@ class SaleResource extends JsonResource
             'remark' => $this->remark,
             'sale_date' => $this->sale_date,
             'created_by' => $this->createdBy->name ?? null,
+            'counter' => $this->createdBy->counter->name ?? null,
             'updated_by' => $this->updatedBy->name ?? null,
             'details' => SaleDetailResource::collection($this->whenLoaded('details')),
             'created_at' => $this->created_at,
