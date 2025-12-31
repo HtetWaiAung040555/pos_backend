@@ -123,6 +123,7 @@ class PromotionsController extends Controller
             'description'    => $request->description ?? $promotion->description,
             'discount_type'  => $request->discount_type ?? $promotion->discount_type,
             'discount_value' => $request->discount_value ?? $promotion->discount_value,
+            'status_id'      => $request->status_id ?? $promotion->status_id,
             'start_at'       => $request->start_at ?? $promotion->start_at,
             'end_at'         => $request->end_at ?? $promotion->end_at,
             'updated_by'     => $request->updated_by ?? $promotion->updated_by
@@ -185,6 +186,9 @@ class PromotionsController extends Controller
         $promotion = Promotion::whereHas('products', function ($q) use ($id) {
                 $q->where('product_id', $id);
             })
+            ->where('status_id', 1)
+            ->where('start_at', '<=', $now)
+            ->where('end_at', '>=', $now)
             ->first();
 
         $discount_amount = 0;
