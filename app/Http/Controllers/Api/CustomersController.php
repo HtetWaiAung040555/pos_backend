@@ -55,8 +55,6 @@ class CustomersController extends Controller
 
         $request->validate([
             'name' => 'sometimes|required|string|max:255',
-            'phone' => 'sometimes|string|max:50',
-            'address' => 'sometimes|string|max:255',
             'status_id' => 'sometimes|required|exists:statuses,id',
             'is_default' => 'sometimes|boolean',
             'updated_by' => 'nullable|exists:users,id'
