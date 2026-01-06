@@ -327,7 +327,7 @@ class SaleController extends Controller
                 // 3. Insert stock transaction
                 StockTransaction::create([
                     'inventory_id' => $inventory->id ?? null,
-                    'reference_d' => $sale->id,
+                    'reference_id' => $sale->id,
                     'reference_type' => 'sale_void',
                     'quantity_change' => $detail->quantity,
                     'type' => 'in',
