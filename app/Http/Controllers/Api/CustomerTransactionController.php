@@ -178,10 +178,11 @@ class CustomerTransactionController extends Controller
 
         DB::beginTransaction();
         try {
-            $transaction->delete();
-
             // Update balance after delete
-            // $this->updateCustomerBalance($customerId);
+            $customer = Customer::findOrFail($customerId);
+            $customer->balance -= $transaction->amount;
+            $customer->save();
+            $transaction->delete();
 
             DB::commit();
 
