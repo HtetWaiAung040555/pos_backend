@@ -87,8 +87,10 @@ class PriceChangesController extends Controller
         // Return 422 if any product is already in a price change
         if (!empty($conflictingProducts)) {
             return response()->json([
-                'message' => 'Some products already have an active price change.',
-                'products' => $conflictingProducts
+                'errors' => [
+                    'message' => 'Some products already have an active price change.',
+                    'products' => $conflictingProducts
+                ]
             ], 422);
         }
 
@@ -111,11 +113,11 @@ class PriceChangesController extends Controller
                 $product = Product::lockForUpdate()->findOrFail($item['product_id']);
 
                 if ($priceChange->type === 'sale') {
-                    $product->old_price = $product->price;  
+                    $product->old_price = $product->price == 0 ? $item['new_price'] : $product->price;  
                     $product->price = $item['new_price'];
                     $oldPrice = $product->old_price;
                 } else {
-                    $product->old_purchase_price = $product->purchase_price;
+                    $product->old_purchase_price = $product->purchase_price == 0 ? $item['new_price'] : $product->purchase_price;
                     $product->purchase_price = $item['new_price'];
                     $oldPrice = $product->old_purchase_price;
                 }
@@ -206,8 +208,10 @@ class PriceChangesController extends Controller
 
             if (!empty($conflictingProducts)) {
                 return response()->json([
-                    'message' => 'Some products already have an active price change.',
-                    'products' => $conflictingProducts
+                    'errors' => [
+                        'message' => 'Some products already have an active price change.',
+                        'products' => $conflictingProducts
+                    ]
                 ], 422);
             }
         }
@@ -231,11 +235,11 @@ class PriceChangesController extends Controller
                     $product = Product::lockForUpdate()->findOrFail($item['product_id']);
 
                     if ($priceChange->type === 'sale') {
-                        $product->old_price = $product->price;
+                        //$product->old_price = $product->price;
                         $product->price = $item['new_price'];
                         $oldPrice = $product->old_price;
                     } else {
-                        $product->old_purchase_price = $product->purchase_price;
+                        //$product->old_purchase_price = $product->purchase_price;
                         $product->purchase_price = $item['new_price'];
                         $oldPrice = $product->old_purchase_price;
                     }
