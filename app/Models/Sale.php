@@ -28,6 +28,8 @@ class Sale extends Model
         'updated_by',
         'void_at',
         'void_by',
+        'is_synced',
+        'synced_at',    
     ];
 
     protected $casts = [

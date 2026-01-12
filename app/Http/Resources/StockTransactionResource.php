@@ -38,6 +38,7 @@ class StockTransactionResource extends JsonResource
 
             "reference_id" => $this->reference_id,
             "reference_type" => $this->reference_type,
+            "reference_date" => $this->getReferenceDate(),
             "quantity_change" => $this->quantity_change,
             "type" => $this->type,
             "reason" => $this->reason,
@@ -49,5 +50,15 @@ class StockTransactionResource extends JsonResource
 
             "created_at" => $this->created_at->toDateTimeString(),
         ];
+    }
+
+    private function getReferenceDate(): ?string
+    {
+        return match($this->reference_type) {
+            'sale' => $this->sale?->sale_date->toDateTimeString(),
+            'purchase' => $this->purchase?->purchase_date->toDateTimeString(),
+            'sale_return' => $this->saleReturn?->sale_return_date->toDateTimeString(),
+            default => null,
+        };
     }
 }

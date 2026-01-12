@@ -20,6 +20,7 @@ class Customer extends Model
         'address',
         'status_id',
         'is_default',
+        'balance',
         'created_by',
         'updated_by'
     ];

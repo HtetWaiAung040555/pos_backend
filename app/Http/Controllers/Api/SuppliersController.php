@@ -70,4 +70,5 @@ class SuppliersController extends Controller
             return response()->json(['error' => 'Supplier cannot be deleted', 'details' => $e->getMessage()], 400);
         }
     }
+
 }

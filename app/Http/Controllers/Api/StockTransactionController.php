@@ -12,29 +12,29 @@ class StockTransactionController extends Controller
 {
     public function index(Request $request)
     {
-        $query = StockTransaction::query()->with(["inventory.product"]);
+        $query = StockTransaction::query()->with(["inventory.product", 'sale', 'purchase', 'saleReturn' ]);
 
-        // 🔍 Filter by inventory
+        // Filter by inventory
         if ($request->filled("inventory_id")) {
             $query->where("inventory_id", $request->inventory_id);
         }
 
-        // 🔍 Filter by reference type
+        // Filter by reference type
         if ($request->filled("reference_type")) {
             $query->where("reference_type", $request->reference_type);
         }
 
-        // 🔍 Filter by in / out
+        // Filter by in / out
         if ($request->filled("type")) {
             $query->where("type", $request->type);
         }
 
-        // 🔍 Search by reference_id
+        // Search by reference_id
         if ($request->filled("search")) {
             $query->where("reference_id", "like", "%" . $request->search . "%");
         }
 
-        // 📅 Date range filter
+        // Date range filter
         if ($request->filled("start_date") && $request->filled("end_date")) {
             $query->whereBetween("created_at", [
                 $request->start_date,
@@ -46,9 +46,8 @@ class StockTransactionController extends Controller
             $query->whereDate("created_at", "<=", $request->end_date);
         }
 
-        // ⬇️ Latest first
+        // Latest first
         $transactions = $query->orderBy("created_at", "desc")->get();
-
         return StockTransactionResource::collection($transactions);
     }
 

@@ -31,10 +31,15 @@ class StockTransaction extends Model
         return $this->belongsTo(Sale::class, "reference_id");
     }
 
-    // public function purchase()
-    // {
-    //     return $this->belongsTo(Purchase::class, 'reference_id');
-    // }
+    public function purchase()
+    {
+        return $this->belongsTo(Purchase::class, 'reference_id');
+    }
+
+    public function saleReturn()
+    {
+        return $this->belongsTo(SaleReturn::class, 'reference_id');
+    }
 
     public function createdBy()
     {

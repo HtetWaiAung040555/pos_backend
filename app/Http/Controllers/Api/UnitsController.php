@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Resources\UnitResource;
 use App\Models\Unit;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Http;
 
 class UnitsController extends Controller
 {
@@ -18,21 +19,44 @@ class UnitsController extends Controller
 
     public function store(Request $request)
     {
-        $request->validate([
-            'name' => 'required|string|max:255',
-            'status_id' => 'required|exists:statuses,id',
-            'created_by' => 'required|exists:users,id',
-            'updated_by' => 'nullable|exists:users,id'
-        ]);
-    
-        $unit = Unit::create([
-            'name' => $request->name,
-            'status_id' => $request->status_id,
-            'created_by' => $request->created_by,
-            'updated_by' => $request->updated_by ?? $request->created_by
-        ]);
-    
-        return new UnitResource($unit->fresh(['status', 'createdBy', 'updatedBy']));
+
+        try {
+            $response = Http::withToken(env('CLOUD_API_TOKEN'))
+            ->get(env('CLOUD_API_URL') . '/api/units');
+
+            if (! $response->successful()) {
+                return response()->json([
+                    'message' => 'Cloud API request failed',
+                    'status'  => $response->status()
+                ], 500);
+            }
+
+            foreach ($response->json('data') as $item) {
+                Unit::updateOrCreate(
+                    ['id' => $item['id']],
+                    [
+                        'name' => $item['name'],
+                        'phone' => $item['phone'],
+                        'location' => $item['location'],
+                        'warehouse_id' => $item['warehouse']['id'],
+                        'status_id' => $item['status']['id'],
+                        'created_by' => $item['created_by']['id'],
+                        'updated_by' => $request->updated_by ?? $request->created_by
+                    ]
+                );
+                
+            }
+            return response()->json(['message' => 'success'],200);
+
+        } catch (\Exception $e) {
+
+            return response()->json([
+                'message' => 'An error occurred during sync',
+                'error'   => $e->getMessage()
+            ], 500);
+            
+        }
+
     }
 
  

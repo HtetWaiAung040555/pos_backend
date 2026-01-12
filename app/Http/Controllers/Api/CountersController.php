@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use App\Models\Counter;
 use App\Http\Resources\CounterResource;
+use Illuminate\Support\Facades\Http;
 
 class CountersController extends Controller
 {
@@ -17,25 +18,42 @@ class CountersController extends Controller
 
     public function store(Request $request)
     {
-        $request->validate([
-            'name' => 'required|string|max:255',
-            'desc' => 'nullable|string|max:1000',
-            'branch_id' => 'required|exists:branches,id',
-            'status_id' => 'required|exists:statuses,id',
-            'created_by' => 'required|exists:users,id',
-            'updated_by' => 'nullable|exists:users,id'
-        ]);
 
-        $counter = Counter::create([
-            'name' => $request->name,
-            'desc' => $request->desc,
-            'branch_id' => $request->branch_id,
-            'status_id' => $request->status_id,
-            'created_by' => $request->created_by,
-            'updated_by' => $request->updated_by ?? $request->created_by,
-        ]);
+        try {
+            $response = Http::withToken(env('CLOUD_API_TOKEN'))
+            ->get(env('CLOUD_API_URL') . '/api/counters');
 
-        return new CounterResource($counter->fresh(['branch', 'status', 'createdBy', 'updatedBy']));
+            if (! $response->successful()) {
+                return response()->json([
+                    'message' => 'Cloud API request failed',
+                    'status'  => $response->status()
+                ], 500);
+            }
+
+            foreach ($response->json() as $item) {
+                Counter::updateOrCreate(
+                    ['id' => $item['id']],
+                    [
+                        'name' => $item['name'],
+                        'desc' => $item['desc'],
+                        'branch_id' => $item['branch']['id'],
+                        'status_id' => $item['status']['id'],
+                        'created_by' => $item['created_by']['id'],
+                        'updated_by' => $request->updated_by ?? $request->created_by
+                    ]
+                );
+            }
+            return response()->json(['message' => 'success'],200);
+
+        } catch (\Exception $e) {
+
+            return response()->json([
+                'message' => 'An error occurred during sync',
+                'error'   => $e->getMessage()
+            ], 500);
+            
+        }
+        
     }
 
     public function show(string $id)
