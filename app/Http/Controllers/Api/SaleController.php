@@ -140,6 +140,7 @@ class SaleController extends Controller
                         'inventory_id'    => $inventory->id,
                         'reference_id'    => $sale->id,
                         'reference_type'  => 'sale',
+                        'reference_date' => $request->sale_date ?? now(),
                         'quantity_change' => $deductQty,
                         'type'            => 'out',
                         'created_by'      => $request->created_by,
@@ -184,6 +185,7 @@ class SaleController extends Controller
                         'inventory_id'    => $negativeInventory->id,
                         'reference_id'    => $sale->id,
                         'reference_type'  => 'sale',
+                        'reference_date' => $request->sale_date ?? now(),
                         'quantity_change' => $remainingQty,
                         'type'            => 'out',
                         'created_by'      => $request->created_by
@@ -329,6 +331,7 @@ class SaleController extends Controller
                     'inventory_id' => $inventory->id ?? null,
                     'reference_id' => $sale->id,
                     'reference_type' => 'sale_void',
+                    'reference_date' => $sale->sale_date,
                     'quantity_change' => $detail->quantity,
                     'type' => 'in',
                     'created_by' => $sale->void_by,

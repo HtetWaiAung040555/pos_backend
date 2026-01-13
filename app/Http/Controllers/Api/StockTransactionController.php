@@ -36,14 +36,14 @@ class StockTransactionController extends Controller
 
         // 📅 Date range filter
         if ($request->filled("start_date") && $request->filled("end_date")) {
-            $query->whereBetween("created_at", [
+            $query->whereBetween("reference_date", [
                 $request->start_date,
                 $request->end_date,
             ]);
         } elseif ($request->filled("start_date")) {
-            $query->whereDate("created_at", ">=", $request->start_date);
+            $query->whereDate("reference_date", ">=", $request->start_date);
         } elseif ($request->filled("end_date")) {
-            $query->whereDate("created_at", "<=", $request->end_date);
+            $query->whereDate("reference_date", "<=", $request->end_date);
         }
 
         // ⬇️ Latest first

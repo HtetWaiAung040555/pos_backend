@@ -13,7 +13,7 @@ use Illuminate\Support\Facades\DB;
 
 class PriceChangesController extends Controller
 {
-    public function index()
+    public function index(Request $request)
     {
         $now = now();
 
@@ -35,8 +35,13 @@ class PriceChangesController extends Controller
             //     ->update(['status_id' => $activeStatus]);
         });
 
-        $price_changes = PriceChange::with('products')->get();
-        return PriceChangeResource::collection($price_changes);
+        $PriceChanges = PriceChange::with('products')
+        ->when($request->filled('type'), function ($q) use ($request) {
+            $q->where('type', $request->type);
+        })
+        ->get();
+
+        return PriceChangeResource::collection($PriceChanges);
     }
 
     public function store(Request $request)

@@ -13,6 +13,8 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
+use function Symfony\Component\Clock\now;
+
 class PurchasesController extends Controller
 {
     public function index(Request $request)
@@ -68,6 +70,7 @@ class PurchasesController extends Controller
             'products.*.expired_date' => 'nullable|date',
         ]);
 
+        Log::info("request :", $request->all());
         DB::beginTransaction();
         try {
             // Calculate total
@@ -175,6 +178,7 @@ class PurchasesController extends Controller
                         'inventory_id'    => $negInv->id,
                         'reference_id'    => $purchase->id ?? null,
                         'reference_type'  => 'purchase',
+                        'reference_date' => $request->purchase_date ?? now(),
                         'quantity_change' => $offsetQty,
                         'type'            => 'in',
                         'created_by'      => $request->created_by
@@ -197,6 +201,7 @@ class PurchasesController extends Controller
                         'inventory_id'    => $inventory->id,
                         'reference_id'    => $purchase->id ?? null,
                         'reference_type'  => 'purchase',
+                        'reference_date' => $request->purchase_date ?? now(),
                         'quantity_change' => $remainingQty,
                         'type'            => 'in',
                         'created_by'      => $request->created_by
@@ -205,7 +210,7 @@ class PurchasesController extends Controller
             
                 PurchaseDetail::create([
                     'purchase_id' => $purchase->id,
-                    'inventory_id' => $inventory->id,
+                    'inventory_id' => $inventory->id ?? $negInv->id,
                     'product_id' => $item['product_id'],
                     'quantity' => $item['quantity'],
                     'price' => $price,
@@ -334,6 +339,7 @@ class PurchasesController extends Controller
                     "inventory_id" => $inventory->id,
                     "reference_id" => $purchase->id,
                     "reference_type" => "purchase_update",
+                    'reference_date' => $request->purchase_date ?? $purchase->purchase_date,
                     "quantity_change" => $detail->quantity,
                     "type" => "out",
                     "created_by" => $request->updated_by,
@@ -376,6 +382,7 @@ class PurchasesController extends Controller
                         'inventory_id'    => $inventory->id,
                         'reference_id'    => $purchase->id,
                         'reference_type'  => 'purchase_update',
+                        'reference_date' => $request->purchase_date ?? $purchase->purchase_date,
                         'quantity_change' => $item['quantity'],
                         'type'            => 'in',
                         'created_by'      => $request->updated_by,
@@ -460,6 +467,7 @@ class PurchasesController extends Controller
                     'inventory_id'    => $inventory->id ?? null,
                     'reference_id'    => $purchase->id,
                     'reference_type'  => 'purchase_void',
+                    'reference_date' => $purchase->purchase_date,
                     'quantity_change' => $detail->quantity,
                     'type'            => 'out',
                     'created_by'      => $request->void_by,

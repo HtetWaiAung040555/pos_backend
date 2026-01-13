@@ -11,6 +11,8 @@ use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
+use function Symfony\Component\Clock\now;
+
 class InventoriesController extends Controller
 {
     public function index()
@@ -54,7 +56,8 @@ class InventoriesController extends Controller
 
                 StockTransaction::create([
                     'inventory_id'    => $negInv->id,
-                    'reference_id'    => $request->reference_id ?? null,
+                    'reference_id'    => $negInv->id,
+                    'reference_date' => now(),
                     'reference_type'  => 'opening',
                     'quantity_change' => $offsetQty,
                     'type'            => 'in',
@@ -77,8 +80,9 @@ class InventoriesController extends Controller
 
                 StockTransaction::create([
                     'inventory_id'    => $inventory->id,
-                    'reference_id'    => $request->reference_id ?? null,
+                    'reference_id'    => $inventory->id,
                     'reference_type'  => 'opening',
+                    'reference_date' => now(),
                     'quantity_change' => $remainingQty,
                     'type'            => 'in',
                     'created_by'      => $request->created_by
@@ -138,6 +142,8 @@ class InventoriesController extends Controller
                     StockTransaction::create([
                         'inventory_id'    => $inventory->id,
                         'reference_type'  => 'opening_adjustment',
+                        'reference_date' => now(),
+                        'reference_id'    => $inventory->id,
                         'quantity_change' => abs($diff),
                         'type'            => $diff > 0 ? 'in' : 'out',
                         'created_by'      => $request->updated_by
@@ -196,6 +202,7 @@ class InventoriesController extends Controller
                     'inventory_id'    => $inventory->id,
                     'reference_id'    => null,
                     'reference_type'  => 'opening_void',
+                    'reference_date' => now(),
                     'quantity_change' => abs($inventory->qty),
                     'type'            => $inventory->qty > 0 ? 'out' : 'in',
                     'created_by'      => $request->void_by
@@ -249,6 +256,7 @@ class InventoriesController extends Controller
                 'inventory_id'    => $inventory->id,
                 'reference_id'    => null,
                 'reference_type'  => 'adjustment',
+                'reference_date' => now(),
                 'quantity_change' => $request->qty,
                 'reason'          => $request->reason,
                 'type'            => $request->qty > 0 ? 'in' : 'out',

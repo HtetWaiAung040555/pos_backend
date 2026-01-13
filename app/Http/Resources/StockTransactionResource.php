@@ -38,6 +38,7 @@ class StockTransactionResource extends JsonResource
 
             "reference_id" => $this->reference_id,
             "reference_type" => $this->reference_type,
+            "reference_date" => $this->reference_date,
             "quantity_change" => $this->quantity_change,
             "type" => $this->type,
             "reason" => $this->reason,
