@@ -102,7 +102,7 @@ Route::middleware(['auth:sanctum'])->group(function () {
 
     Route::apiResource('/pricechanges', PriceChangesController::class);
 
-    Route::get('/promotions/checkprice/{id}', [PromotionsController::class, 'checkPrice']);
+    Route::post('/promotions/checkprice', [PromotionsController::class, 'checkPrice']);
     Route::apiResource('/promotions', PromotionsController::class);
 
 });
