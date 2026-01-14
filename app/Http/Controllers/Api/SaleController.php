@@ -14,6 +14,8 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
+use function Symfony\Component\Clock\now;
+
 class SaleController extends Controller
 {
     public function index(Request $request)
@@ -310,6 +312,26 @@ class SaleController extends Controller
             $sale = Sale::with('details')->findOrFail($id);
             $voidStatus = \App\Models\Status::where('name', 'void')->first();
 
+            if ($sale->status_id == 7) {
+                // 3. Revert customer balance if sale was on credit
+                $customer = $sale->customer;
+                $customer->balance += $sale->total_amount;
+                $customer->save();
+
+                // 2. Create CustomerTransaction only if status changed
+                CustomerTransaction::create([
+                    'customer_id' => $sale->customer_id,
+                    'sale_id' => $sale->id,
+                    'type' => 'sale_void',
+                    'amount' => $sale->total_amount,
+                    'payment_id' => $sale->payment_id,
+                    'status_id' => 7,
+                    'pay_date' => now(),
+                    'created_by' => $request->void_by,
+                    'updated_by' => $request->void_by
+                ]);
+            }
+
             // 1. Update sale status
             $sale->status_id = $voidStatus->id;
             $sale->void_at = now();
@@ -338,9 +360,6 @@ class SaleController extends Controller
                     'updated_by' => $sale->void_by,
                 ]);
             }
-
-            // 4. Remove customer transactions related to this sale
-            CustomerTransaction::where('sale_id', $sale->id)->delete();
 
             DB::commit();
 
