@@ -16,9 +16,9 @@ class PromotionsController extends Controller
         $now = now();
 
         $inactiveStatus = Status::where('name', 'inactive')->value('id');
-        // $activeStatus   = Status::where('name', 'active')->value('id');
+        $activeStatus   = Status::where('name', 'active')->value('id');
 
-        DB::transaction(function () use ($now, $inactiveStatus) {
+        DB::transaction(function () use ($now, $inactiveStatus, $activeStatus) {
 
             Promotion::whereNull('void_at')
                 ->where(function ($q) use ($now) {
@@ -27,10 +27,10 @@ class PromotionsController extends Controller
                 })
                 ->update(['status_id' => $inactiveStatus]);
 
-            // Promotion::whereNull('void_at')
-            //     ->where('start_at', '<=', $now)
-            //     ->where('end_at', '>=', $now)
-            //     ->update(['status_id' => $activeStatus]);
+            Promotion::whereNull('void_at')
+                ->where('start_at', '<=', $now)
+                ->where('end_at', '>=', $now)
+                ->update(['status_id' => $activeStatus]);
         });
 
         $promotions = Promotion::with('products')->get();
@@ -170,9 +170,9 @@ class PromotionsController extends Controller
 
 
 
-    public function checkPrice($id)
+    public function checkPrice(Request $request)
     {
-        $product = Product::find($id);
+        $product = Product::find($request->product_id);
 
         if (!$product) {
             return response()->json([
@@ -181,14 +181,18 @@ class PromotionsController extends Controller
             ]);
         }
 
+        $id  = $request->product_id;
+
         $now = now();
+
+        $checkDate = $request->sale_date ? $request->sale_date : $now;
 
         $promotion = Promotion::whereHas('products', function ($q) use ($id) {
                 $q->where('product_id', $id);
             })
             ->where('status_id', 1)
-            ->where('start_at', '<=', $now)
-            ->where('end_at', '>=', $now)
+            ->where('start_at', '<=', $checkDate)
+            ->where('end_at', '>=', $checkDate)
             ->first();
 
         $discount_amount = 0;

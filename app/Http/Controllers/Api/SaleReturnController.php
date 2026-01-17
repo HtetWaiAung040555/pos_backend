@@ -149,8 +149,9 @@ class SaleReturnController extends Controller
                 // Insert stock transaction
                 StockTransaction::create([
                     'inventory_id' => $inventory->id ?? null,
-                    'reference_d' => $saleReturn->id,
+                    'reference_id' => $saleReturn->id,
                     'reference_type' => 'sale_return',
+                    'reference_date' => $request->return_date ?? now(),
                     'quantity_change' => $item["quantity"],
                     'type' => 'in',
                     "created_by" => $request->created_by
@@ -294,6 +295,7 @@ class SaleReturnController extends Controller
                     "inventory_id" => $inventory->id,
                     "reference_id" => $saleReturn->id,
                     "reference_type" => "sale_return_update",
+                    "reference_date" => $request->return_date ?? $saleReturn->return_date,
                     "quantity_change" => $detail->quantity,
                     "type" => "out",
                     "created_by" => $request->updated_by,
@@ -351,7 +353,8 @@ class SaleReturnController extends Controller
                 StockTransaction::create([
                     "inventory_id" => $inventory->id,
                     "reference_id" => $saleReturn->id,
-                    "reference_type" => "sale_return",
+                    "reference_type" => "sale_return_update",
+                    "reference_date" => $request->return_date ?? $saleReturn->return_date,
                     "quantity_change" => $item["quantity"],
                     "type" => "in",
                     "created_by" => $request->updated_by,
@@ -427,8 +430,9 @@ class SaleReturnController extends Controller
                     'inventory_id' => $inventory->id,
                     'reference_id' => $saleReturn->id,
                     'reference_type' => 'sale_return_void',
+                    'reference_date' => $saleReturn->return_date,
                     'quantity_change' => $detail->quantity,
-                    'type' => 'in',
+                    'type' => 'out',
                     'created_by' => $request->void_by,
                 ]);
             }

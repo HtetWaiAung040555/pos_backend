@@ -15,6 +15,7 @@ class StockTransaction extends Model
         "inventory_id",
         "reference_id",
         "reference_type",
+        "reference_date",
         "quantity_change",
         "reason",
         "type",

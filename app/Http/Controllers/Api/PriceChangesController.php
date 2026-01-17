@@ -13,7 +13,7 @@ use Illuminate\Support\Facades\DB;
 
 class PriceChangesController extends Controller
 {
-    public function index()
+    public function index(Request $request)
     {
         $now = now();
 
@@ -35,8 +35,13 @@ class PriceChangesController extends Controller
             //     ->update(['status_id' => $activeStatus]);
         });
 
-        $price_changes = PriceChange::with('products')->get();
-        return PriceChangeResource::collection($price_changes);
+        $PriceChanges = PriceChange::with('products')
+        ->when($request->filled('type'), function ($q) use ($request) {
+            $q->where('type', $request->type);
+        })
+        ->get();
+
+        return PriceChangeResource::collection($PriceChanges);
     }
 
     public function store(Request $request)
@@ -56,43 +61,43 @@ class PriceChangesController extends Controller
             'end_at' => $request->end_at ?: null,
         ]);
         
-        $start = $request->start_at ? Carbon::parse($request->start_at) : now();
-        $end = $request->end_at ? Carbon::parse($request->end_at) : now();
+        // $start = $request->start_at ? Carbon::parse($request->start_at) : now();
+        // $end = $request->end_at ? Carbon::parse($request->end_at) : now();
 
-        $conflictingProducts = [];
-        foreach ($request->products as $item) {
-            $product = Product::findOrFail($item['product_id']);
+        // $conflictingProducts = [];
+        // foreach ($request->products as $item) {
+        //     $product = Product::findOrFail($item['product_id']);
 
-            $hasActive = $product->priceChanges()
-                ->where('type', $request->type)
-                ->where('status_id', 1)
-                ->whereNull('void_at')
-                ->where(function ($q) use ($start, $end) {
-                    $q->where(function ($q2) use ($start, $end) {
-                        $q2->whereNull('start_at')
-                        ->orWhere('start_at', '<=', $end);
-                    })
-                    ->where(function ($q2) use ($start, $end) {
-                        $q2->whereNull('end_at')
-                        ->orWhere('end_at', '>=', $start);
-                    });
-                })
-                ->exists();
+        //     $hasActive = $product->priceChanges()
+        //         ->where('type', $request->type)
+        //         ->where('status_id', 1)
+        //         ->whereNull('void_at')
+        //         ->where(function ($q) use ($start, $end) {
+        //             $q->where(function ($q2) use ($start, $end) {
+        //                 $q2->whereNull('start_at')
+        //                 ->orWhere('start_at', '<=', $end);
+        //             })
+        //             ->where(function ($q2) use ($start, $end) {
+        //                 $q2->whereNull('end_at')
+        //                 ->orWhere('end_at', '>=', $start);
+        //             });
+        //         })
+        //         ->exists();
 
-            if ($hasActive) {
-                $conflictingProducts[] = $product->name;
-            }
-        }
+        //     if ($hasActive) {
+        //         $conflictingProducts[] = $product->name;
+        //     }
+        // }
 
-        // Return 422 if any product is already in a price change
-        if (!empty($conflictingProducts)) {
-            return response()->json([
-                'errors' => [
-                    'message' => 'Some products already have an active price change.',
-                    'products' => $conflictingProducts
-                ]
-            ], 422);
-        }
+        // // Return 422 if any product is already in a price change
+        // if (!empty($conflictingProducts)) {
+        //     return response()->json([
+        //         'errors' => [
+        //             'message' => 'Some products already have an active price change.',
+        //             'products' => $conflictingProducts
+        //         ]
+        //     ], 422);
+        // }
 
         // Create the price change inside transaction
         $priceChange = DB::transaction(function () use ($request) {
@@ -102,7 +107,7 @@ class PriceChangesController extends Controller
                 'type' => $request->type,
                 'start_at' => $request->start_at,
                 'end_at' => $request->end_at,
-                'status_id' => 1,
+                'status_id' => $request->status_id,
                 'created_by' => $request->created_by,
                 'updated_by' => $request->updated_by ?? $request->created_by
             ]);
@@ -178,43 +183,43 @@ class PriceChangesController extends Controller
             'end_at' => $request->end_at ?: null,
         ]);
 
-        $start = $request->start_at ? Carbon::parse($request->start_at) : now();
-        $end = $request->end_at ? Carbon::parse($request->end_at) : now();
+        // $start = $request->start_at ? Carbon::parse($request->start_at) : now();
+        // $end = $request->end_at ? Carbon::parse($request->end_at) : now();
 
-        // Check for conflicting products if products provided
-        if ($request->has('products')) {
-            $conflictingProducts = [];
-            foreach ($request->products as $item) {
-                $product = Product::findOrFail($item['product_id']);
-                $hasActive = $product->priceChanges()
-                    ->where('type', $request->type ?? $priceChange->type)
-                    ->where('status_id', 1)
-                    ->whereNull('void_at')
-                    ->where('price_changes.id', '!=', $priceChange->id)
-                    ->where(function ($q) use ($start, $end) {
-                        $q->where(function ($q2) use ($start, $end) {
-                            $q2->whereNull('start_at')->orWhere('start_at', '<=', $end);
-                        })
-                        ->where(function ($q2) use ($start, $end) {
-                            $q2->whereNull('end_at')->orWhere('end_at', '>=', $start);
-                        });
-                    })
-                    ->exists();
+        // // Check for conflicting products if products provided
+        // if ($request->has('products')) {
+        //     $conflictingProducts = [];
+        //     foreach ($request->products as $item) {
+        //         $product = Product::findOrFail($item['product_id']);
+        //         $hasActive = $product->priceChanges()
+        //             ->where('type', $request->type ?? $priceChange->type)
+        //             ->where('status_id', 1)
+        //             ->whereNull('void_at')
+        //             ->where('price_changes.id', '!=', $priceChange->id)
+        //             ->where(function ($q) use ($start, $end) {
+        //                 $q->where(function ($q2) use ($start, $end) {
+        //                     $q2->whereNull('start_at')->orWhere('start_at', '<=', $end);
+        //                 })
+        //                 ->where(function ($q2) use ($start, $end) {
+        //                     $q2->whereNull('end_at')->orWhere('end_at', '>=', $start);
+        //                 });
+        //             })
+        //             ->exists();
 
-                if ($hasActive) {
-                    $conflictingProducts[] = $product->name;
-                }
-            }
+        //         if ($hasActive) {
+        //             $conflictingProducts[] = $product->name;
+        //         }
+        //     }
 
-            if (!empty($conflictingProducts)) {
-                return response()->json([
-                    'errors' => [
-                        'message' => 'Some products already have an active price change.',
-                        'products' => $conflictingProducts
-                    ]
-                ], 422);
-            }
-        }
+        //     if (!empty($conflictingProducts)) {
+        //         return response()->json([
+        //             'errors' => [
+        //                 'message' => 'Some products already have an active price change.',
+        //                 'products' => $conflictingProducts
+        //             ]
+        //         ], 422);
+        //     }
+        // }
 
         DB::transaction(function () use ($request, $priceChange) {
             // Update main fields

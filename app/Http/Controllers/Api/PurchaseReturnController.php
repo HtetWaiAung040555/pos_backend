@@ -13,6 +13,8 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
+use function Symfony\Component\Clock\now;
+
 class PurchaseReturnController extends Controller
 {
     public function index(Request $request)
@@ -144,8 +146,9 @@ class PurchaseReturnController extends Controller
                 // Insert stock transaction
                 StockTransaction::create([
                     'inventory_id' => $inventory->id ?? null,
-                    'reference_d' => $purchaseReturn->id,
+                    'reference_id' => $purchaseReturn->id,
                     'reference_type' => 'purchase_return',
+                    'reference_date' => $request->return_date ?? now(),
                     'quantity_change' => $item["quantity"],
                     'type' => 'out',
                     "created_by" => $request->created_by
@@ -238,6 +241,7 @@ class PurchaseReturnController extends Controller
                     "inventory_id" => $inventory->id,
                     "reference_id" => $purchaseReturn->id,
                     "reference_type" => "purchase_return_update",
+                    'reference_date' => $request->return_date ?? $purchaseReturn->return_date,
                     "quantity_change" => $detail->quantity,
                     "type" => "in",
                     "created_by" => $request->updated_by,
@@ -296,6 +300,7 @@ class PurchaseReturnController extends Controller
                     "inventory_id" => $inventory->id,
                     "reference_id" => $purchaseReturn->id,
                     "reference_type" => "purchase_return",
+                    "reference_date" => $request->return_date ?? $purchaseReturn->return_date,
                     "quantity_change" => $item["quantity"],
                     "type" => "out",
                     "created_by" => $request->updated_by,
@@ -370,8 +375,9 @@ class PurchaseReturnController extends Controller
                     'inventory_id' => $inventory->id,
                     'reference_id' => $purchaseReturn->id,
                     'reference_type' => 'purchase_return_void',
+                    'reference_date' => $purchaseReturn->return_date,
                     'quantity_change' => $detail->quantity,
-                    'type' => 'out',
+                    'type' => 'in',
                     'created_by' => $request->void_by,
                 ]);
             }
