@@ -15,6 +15,7 @@ use App\Http\Controllers\Api\UsersController;
 use App\Http\Controllers\Api\StatusesController;
 use App\Http\Controllers\Api\WarehousesController;
 use App\Http\Controllers\Api\CustomerTransactionController;
+use App\Http\Controllers\Api\DashboardController;
 use App\Http\Controllers\Api\PriceChangesController;
 use App\Http\Controllers\Api\PromotionsController;
 use App\Http\Controllers\Api\PurchaseReturnController;
@@ -56,6 +57,15 @@ Route::middleware(['auth:sanctum'])->group(function () {
 
     // Check Permission for User
     Route::get('/users/{user}/permissions/{permission}', [UsersController::class, 'hasPermission']);
+
+    Route::get('/dashboard/summary', [DashboardController::class, 'summary']);
+    Route::get('/dashboard/dailysales', [DashboardController::class, 'dailySales']);
+    Route::get('/dashboard/weeklysales',[DashboardController::class, 'weeklySales']);
+    Route::get('/dashboard/monthlysales', [DashboardController::class, 'monthlySales']);
+    Route::get('/dashboard/yearlysales', [DashboardController::class, 'yearlySales']);
+    Route::get('/dashboard/paymentmethods', [DashboardController::class, 'paymentMethods']);
+    Route::get('/dashboard/orders', [DashboardController::class, 'orders']);
+    Route::get('/dashboard/stocklevels', [DashboardController::class, 'stockLevels']);
 
     Route::apiResource('/branches', BranchesController::class);
 
