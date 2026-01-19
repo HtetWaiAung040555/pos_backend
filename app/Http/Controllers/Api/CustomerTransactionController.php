@@ -8,7 +8,6 @@ use App\Models\CustomerTransaction;
 use App\Models\Customer;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Log;
 
 class CustomerTransactionController extends Controller
 {
@@ -88,8 +87,7 @@ class CustomerTransactionController extends Controller
                 [
                     "error" => "Failed to create balance transaction",
                     "details" => $e->getMessage(),
-                ],
-                500,
+                ],500
             );
         }
     }
@@ -163,26 +161,27 @@ class CustomerTransactionController extends Controller
                 [
                     "error" => "Failed to update balance transaction",
                     "details" => $e->getMessage(),
-                ],
-                500,
+                ],500
             );
         }
     }
 
-    public function destroy($id)
+    public function destroy(Request $request, $id)
     {
-        $transaction = CustomerTransaction::where("type", "top-up")->findOrFail(
-            $id,
-        );
+        $transaction = CustomerTransaction::findOrFail($id);
         $customerId = $transaction->customer_id;
 
         DB::beginTransaction();
         try {
             // Update balance after delete
             $customer = Customer::findOrFail($customerId);
-            $customer->balance -= $transaction->amount;
+            $customer->balance += $transaction->amount;
             $customer->save();
-            $transaction->delete();
+
+            $transaction->update([
+                'status_id'  => 8,
+                'updated_by' => $request->user_id,
+            ]);
 
             DB::commit();
 
@@ -195,8 +194,7 @@ class CustomerTransactionController extends Controller
                 [
                     "error" => "Cannot delete balance transaction",
                     "details" => $e->getMessage(),
-                ],
-                400,
+                ],400
             );
         }
     }
