@@ -285,7 +285,7 @@ class PurchaseReturnController extends Controller
                     "total" => $lineTotal,
                 ]);
 
-                // 🔁 Put stock back to SAME inventory
+                // Put stock back to SAME inventory
                 $inventory = Inventory::lockForUpdate()->find($purchaseDetail->inventory_id);
 
                 if (!$inventory) {

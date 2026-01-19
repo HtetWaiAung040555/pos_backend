@@ -58,16 +58,6 @@ class DashboardController extends Controller
             ->get();
     }
 
-    // public function weeklySales()
-    // {
-    //     return Sale::selectRaw("WEEK(sale_date) as week, SUM(total_amount) as total")
-    //         ->whereNull('void_at')
-    //         ->where('status_id', 7)
-    //         ->groupBy('week')
-    //         ->orderBy('week')
-    //         ->get();
-    // }
-
     public function monthlySales()
     {
         return Sale::selectRaw("DATE_FORMAT(sale_date, '%Y-%m') as month, SUM(total_amount) as total")
@@ -141,8 +131,6 @@ class DashboardController extends Controller
             })
         );
     }
-
-
 
     public function stockLevels(Request $request)
     {

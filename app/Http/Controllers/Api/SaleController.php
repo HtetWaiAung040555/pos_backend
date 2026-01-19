@@ -104,7 +104,7 @@ class SaleController extends Controller
 
                 $remainingQty = $item['quantity'];
 
-                // 1️⃣ Get available stock (expiry first, non-expiry later)
+                // 1. Get available stock (expiry first, non-expiry later)
                 $inventories = Inventory::where('product_id', $product->id)
                     ->where('warehouse_id', $request->warehouse_id)
                     ->where('qty', '>', 0)
@@ -114,7 +114,7 @@ class SaleController extends Controller
                     ->lockForUpdate()
                     ->get();
     
-                // 2️⃣ Deduct from available inventory
+                // 2. Deduct from available inventory
                 foreach ($inventories as $inventory) {
                     if ($remainingQty <= 0) {
                         break;
@@ -152,7 +152,7 @@ class SaleController extends Controller
                     $remainingQty -= $deductQty;
                 }
     
-                // 3️⃣ If still remaining → create or update negative stock
+                // 3. If still remaining → create or update negative stock
                 if ($remainingQty > 0) {
                     $negativeInventory = Inventory::firstOrCreate(
                         [
@@ -250,6 +250,8 @@ class SaleController extends Controller
         DB::beginTransaction();
         try {
 
+            $old_payment = $sale->payment_id;
+
             // 1. Update sale fields
             $sale->update([
                 'payment_id' => $request->payment_id,
@@ -260,27 +262,50 @@ class SaleController extends Controller
                 'updated_by' => $request->updated_by
             ]);
 
-
-            // 2. Create CustomerTransaction only if status changed
-            CustomerTransaction::create([
-                'customer_id' => $sale->customer_id,
-                'sale_id' => $sale->id,
-                'type' => 'sale',
-                'amount' => -($sale->total_amount),
-                'payment_id' => $sale->payment_id,
-                'status_id' => 7,
-                'pay_date' => $sale->sale_date,
-                'created_by' => $sale->updated_by,
-                'updated_by' => $sale->updated_by
-            ]);
-            
-
-            // 3. Update customer balances
             $customer = $sale->customer;
-            if ($sale->payment_id == 2 || $sale->payment_id == 3) {
-                $customer->balance -= $sale->total_amount;
-            }
-            
+
+            if ($transaction = CustomerTransaction::where('sale_id', $sale->id)->first()) {
+                
+                // Update existing transaction
+                $transaction->update([
+                    'customer_id' => $sale->customer_id,
+                    'amount' => -($sale->total_amount),
+                    'payment_id' => $sale->payment_id,
+                    'status_id' => 7,
+                    'pay_date' => $sale->sale_date,
+                    'updated_by' => $sale->updated_by
+                ]);
+
+                if ($old_payment == 2 || $old_payment == 3 ){
+                    $customer->balance += $sale->total_amount;
+                }
+
+                // Update customer balance if credit
+                if ($request->payment_id == 2 || $request->payment_id == 3) {
+                    $customer->balance -= $sale->total_amount;
+                }
+
+            } else {
+                // Create new transaction if it doesn’t exist
+                CustomerTransaction::create([
+                    'customer_id' => $sale->customer_id,
+                    'sale_id' => $sale->id,
+                    'type' => 'sale',
+                    'amount' => -($sale->total_amount),
+                    'payment_id' => $sale->payment_id,
+                    'status_id' => 7,
+                    'pay_date' => $sale->sale_date,
+                    'created_by' => $sale->updated_by,
+                    'updated_by' => $sale->updated_by
+                ]);
+
+                // Update customer balance if credit
+                if ($sale->payment_id == 2 || $sale->payment_id == 3) {
+                    $customer->balance -= $sale->total_amount;
+                    
+                }
+            }  
+
             $customer->save();
 
             DB::commit();
@@ -298,8 +323,8 @@ class SaleController extends Controller
             ], 500);
         }
     }
-
-    public function destroy(Request $request, string $id)
+    
+   public function destroy(Request $request, string $id)
     {
 
         $request->validate([
@@ -376,3 +401,5 @@ class SaleController extends Controller
         }
     }
 }
+
+
