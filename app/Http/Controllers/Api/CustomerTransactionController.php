@@ -175,7 +175,13 @@ class CustomerTransactionController extends Controller
         try {
             // Update balance after delete
             $customer = Customer::findOrFail($customerId);
-            $customer->balance += $transaction->amount;
+            if ($transaction->type == "top-up") {
+                $customer->balance -= $transaction->amount;
+            } else {
+                if ($transaction->payment_id == 2 || $transaction->payment_id == 3) {
+                    $customer->balance += abs($transaction->amount);
+                } 
+            }
             $customer->save();
 
             $transaction->update([
