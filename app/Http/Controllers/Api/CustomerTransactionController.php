@@ -16,12 +16,17 @@ class CustomerTransactionController extends Controller
         $query = CustomerTransaction::with([
             "customer",
             "paymentMethod",
+            "Status",
             "createdBy",
             "updatedBy",
         ]);
 
         if ($request->filled("customer_id")) {
             $query->where("customer_id", $request->customer_id);
+        }
+
+        if ($request->filled("status_id")) {
+            $query->where("status_id", $request->status_id);
         }
 
         if ($request->filled('start_date') && $request->filled('end_date')) {
