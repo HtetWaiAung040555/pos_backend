@@ -250,63 +250,244 @@ class SaleController extends Controller
         DB::beginTransaction();
         try {
 
-            $old_payment = $sale->payment_id;
+            if ($request->status_id == 5 ) {
 
-            // 1. Update sale fields
-            $sale->update([
-                'payment_id' => $request->payment_id,
-                'paid_amount' => $request->paid_amount,
-                'status_id' => $request->status_id,
-                'remark' => $request->remark,
-                'sale_date' => $request->sale_date,
-                'updated_by' => $request->updated_by
-            ]);
+                if ($request->products) {
+                    foreach ($sale->details as $detail) {
 
-            $customer = $sale->customer;
+                        $inventory = Inventory::find($detail->inventory_id);
 
-            if ($transaction = CustomerTransaction::where('sale_id', $sale->id)->first()) {
-                
-                // Update existing transaction
-                $transaction->update([
-                    'customer_id' => $sale->customer_id,
-                    'amount' => -($sale->total_amount),
-                    'payment_id' => $sale->payment_id,
-                    'status_id' => 7,
-                    'pay_date' => $sale->sale_date,
-                    'updated_by' => $sale->updated_by
-                ]);
+                        if ($inventory) {
+                            $inventory->qty += $detail->quantity;
+                            $inventory->save();
+                        }
 
-                if ($old_payment == 2 || $old_payment == 3 ){
-                    $customer->balance += $sale->total_amount;
-                }
+                        // 3. Insert stock transaction
+                        StockTransaction::create([
+                            'inventory_id' => $inventory->id ?? null,
+                            'reference_id' => $sale->id,
+                            'reference_type' => 'sale_update',
+                            'reference_date' => $sale->sale_date,
+                            'quantity_change' => $detail->quantity,
+                            'type' => 'in',
+                            'created_by' => $sale->updated_by,
+                            'updated_by' => $sale->updated_by,
+                        ]);
+                    }
+                     // 1. Calculate total amount
+                    $totalAmount = 0;
+                    foreach ($request->products as $item) {
+                        $totalAmount += ($item['promotion_id']? $item['discount_price'] : $item['price']) * $item['quantity'];
+                    }
 
-                // Update customer balance if credit
-                if ($request->payment_id == 2 || $request->payment_id == 3) {
-                    $customer->balance -= $sale->total_amount;
+                    // 2. Calculate change (due_amount)
+                    $paidAmount = $request->paid_amount ?? 0;
+                    $dueAmount = $paidAmount - $totalAmount; // change amount
+
+                    if ($dueAmount < 0) $dueAmount = 0; // avoid negative change
+
+                    $sale->update([
+                        'payment_id' => $request->payment_id,
+                        'paid_amount' => $request->paid_amount,
+                        'total_amount' => $totalAmount,
+                        'due_amount' => $dueAmount,
+                        'status_id' => $request->status_id,
+                        'remark' => $request->remark,
+                        'sale_date' => $request->sale_date,
+                        'updated_by' => $request->updated_by
+                    ]);
+
+                    foreach ($request->products as $item) {
+                        $product = Product::findOrFail($item['product_id']);
+                        $finalPrice = $item['price'];
+
+                        if (!empty($item['promotion_id'])) {
+                            $finalPrice = $item['price'] - $item['discount_amount'];
+                        }
+
+                        $remainingQty = $item['quantity'];
+
+                        // 1. Get available stock (expiry first, non-expiry later)
+                        $inventories = Inventory::where('product_id', $product->id)
+                            ->where('warehouse_id', $sale->warehouse_id)
+                            ->where('qty', '>', 0)
+                            ->orderByRaw('expired_date IS NULL') // expiry first
+                            ->orderBy('expired_date')
+                            ->orderBy('created_at')
+                            ->lockForUpdate()
+                            ->get();
+            
+                        // 2. Deduct from available inventory
+                        foreach ($inventories as $inventory) {
+                            if ($remainingQty <= 0) {
+                                break;
+                            }
+            
+                            $deductQty = min($remainingQty, $inventory->qty);
+            
+                            $inventory->qty -= $deductQty;
+                            $inventory->updated_by = $request->updated_by;
+                            $inventory->save();
+
+                            $saleDetail = SaleDetail::where('sale_id', $sale->id)
+                                ->where('product_id', $product->id)
+                                ->first();
+                            
+                            if ($saleDetail) {
+                                $saleDetail->update([
+                                    'quantity' => $item['quantity'],
+                                    'price' => $item['price'],
+                                    'discount_amount' => $item['discount_amount'] ?? 0,
+                                    'discount_price' => $item['discount_price'] ?? 0,
+                                    'promotion_id' => $item['promotion_id'] ?? null,
+                                    'total' => $finalPrice * $item['quantity']
+                                ]);
+                            } else {
+                                SaleDetail::create([
+                                    'sale_id' => $sale->id,
+                                    'inventory_id' => $inventory->id,
+                                    'product_id' => $product->id,
+                                    'quantity' => $item['quantity'],
+                                    'price' => $item['price'],
+                                    'discount_amount' => $item['discount_amount'] ?? 0,
+                                    'discount_price' => $item['discount_price'] ?? 0,
+                                    'promotion_id' => $item['promotion_id'] ?? null,
+                                    'total' => $finalPrice * $item['quantity']
+                                ]);
+                            }
+
+                            StockTransaction::create([
+                                'inventory_id'    => $inventory->id,
+                                'reference_id'    => $sale->id,
+                                'reference_type'  => 'sale_update',
+                                'reference_date' => $request->sale_date ?? now(),
+                                'quantity_change' => $deductQty,
+                                'type'            => 'out',
+                                'created_by'      => $request->updated_by,
+                                'updated_by'      => $request->updated_by
+                            ]);
+
+                            $remainingQty -= $deductQty;
+                        }
+            
+                        // 3. If still remaining → create or update negative stock
+                        if ($remainingQty > 0) {
+                            $negativeInventory = Inventory::firstOrCreate(
+                                [
+                                    'product_id'   => $product->id,
+                                    'warehouse_id' => $sale->warehouse_id,
+                                    'expired_date'  => null,
+                                ],
+                                [
+                                    'qty'         => 0,
+                                    'created_by'  => $request->updated_by,
+                                    'updated_by'  => $request->updated_by
+                                ]
+                            );
+            
+                            $negativeInventory->qty -= $remainingQty;
+                            $negativeInventory->updated_by = $request->updated_by;
+                            $negativeInventory->save();
+
+                            $saleDetail = SaleDetail::where('sale_id', $sale->id)
+                                ->where('product_id', $product->id)
+                                ->first();
+                            
+                            if ($saleDetail) {
+                                $saleDetail->update([
+                                    'quantity' => $item['quantity'],
+                                    'price' => $item['price'],
+                                    'discount_amount' => $item['discount_amount'] ?? 0,
+                                    'discount_price' => $item['discount_price'] ?? 0,
+                                    'promotion_id' => $item['promotion_id'] ?? null,
+                                    'total' => $finalPrice * $item['quantity']
+                                ]);
+                            } else {
+                                SaleDetail::create([
+                                    'sale_id' => $sale->id,
+                                    'inventory_id' => $inventory->id,
+                                    'product_id' => $product->id,
+                                    'quantity' => $item['quantity'],
+                                    'price' => $item['price'],
+                                    'discount_amount' => $item['discount_amount'] ?? 0,
+                                    'discount_price' => $item['discount_price'] ?? 0,
+                                    'promotion_id' => $item['promotion_id'] ?? null,
+                                    'total' => $finalPrice * $item['quantity']
+                                ]);
+                            }
+            
+                            StockTransaction::create([
+                                'inventory_id'    => $negativeInventory->id,
+                                'reference_id'    => $sale->id,
+                                'reference_type'  => 'sale_update',
+                                'reference_date' => $request->sale_date ?? now(),
+                                'quantity_change' => $remainingQty,
+                                'type'            => 'out',
+                                'created_by'      => $request->updated_by
+                            ]);
+                        }
+                    }  
                 }
 
             } else {
-                // Create new transaction if it doesn’t exist
-                CustomerTransaction::create([
-                    'customer_id' => $sale->customer_id,
-                    'sale_id' => $sale->id,
-                    'type' => 'sale',
-                    'amount' => -($sale->total_amount),
-                    'payment_id' => $sale->payment_id,
-                    'status_id' => 7,
-                    'pay_date' => $sale->sale_date,
-                    'created_by' => $sale->updated_by,
-                    'updated_by' => $sale->updated_by
+
+                $old_payment = $sale->payment_id;
+
+                $sale->update([
+                    'payment_id' => $request->payment_id,
+                    'paid_amount' => $request->paid_amount,
+                    'status_id' => $request->status_id,
+                    'remark' => $request->remark,
+                    'sale_date' => $request->sale_date,
+                    'updated_by' => $request->updated_by
                 ]);
 
-                // Update customer balance if credit
-                if ($sale->payment_id == 2 || $sale->payment_id == 3) {
-                    $customer->balance -= $sale->total_amount;
-                    
-                }
-            }  
+                $customer = $sale->customer;
 
-            $customer->save();
+                if ($transaction = CustomerTransaction::where('sale_id', $sale->id)->first()) {
+                    
+                    // Update existing transaction
+                    $transaction->update([
+                        'customer_id' => $sale->customer_id,
+                        'amount' => -($sale->total_amount),
+                        'payment_id' => $sale->payment_id,
+                        'status_id' => 7,
+                        'pay_date' => $sale->sale_date,
+                        'updated_by' => $sale->updated_by
+                    ]);
+
+                    if ($old_payment == 2 || $old_payment == 3 ){
+                        $customer->balance += $sale->total_amount;
+                    }
+
+                    // Update customer balance if credit
+                    if ($request->payment_id == 2 || $request->payment_id == 3) {
+                        $customer->balance -= $sale->total_amount;
+                    }
+
+                } else {
+                    // Create new transaction if it doesn’t exist
+                    CustomerTransaction::create([
+                        'customer_id' => $sale->customer_id,
+                        'sale_id' => $sale->id,
+                        'type' => 'sale',
+                        'amount' => -($sale->total_amount),
+                        'payment_id' => $sale->payment_id,
+                        'status_id' => 7,
+                        'pay_date' => $sale->sale_date,
+                        'created_by' => $sale->updated_by,
+                        'updated_by' => $sale->updated_by
+                    ]);
+
+                    // Update customer balance if credit
+                    if ($sale->payment_id == 2 || $sale->payment_id == 3) {
+                        $customer->balance -= $sale->total_amount;
+                        
+                    }
+                }  
+
+                $customer->save();
+            }
 
             DB::commit();
 

@@ -158,6 +158,8 @@ class PurchasesController extends Controller
 
                 $remainingQty = $item['quantity'];
 
+                $expiredDate = $item['expired_date'] ?? null;
+
                 $negativeInventories = Inventory::where('product_id', $item['product_id'])
                 ->where('warehouse_id', $request->warehouse_id)
                 ->where('qty', '<', 0)
@@ -188,29 +190,51 @@ class PurchasesController extends Controller
                 }
 
                 if ($remainingQty > 0) {
-                    $inventory = Inventory::create([
-                        'product_id'   => $item['product_id'],
-                        'warehouse_id' => $request->warehouse_id,
-                        'expired_date'  => $item['expired_date'],
-                        'qty'          => $remainingQty,
-                        'created_by'   => $request->created_by,
-                        'updated_by' => $request->updated_by ?? $request->created_by
-                    ]);
+                    
+                    $existingInventory = Inventory::where('product_id', $item['product_id'])
+                        ->where('warehouse_id', $request->warehouse_id)
+                        ->where('expired_date', $expiredDate)
+                        ->first();
 
-                    StockTransaction::create([
-                        'inventory_id'    => $inventory->id,
-                        'reference_id'    => $purchase->id ?? null,
-                        'reference_type'  => 'purchase',
-                        'reference_date' => $request->purchase_date ?? now(),
-                        'quantity_change' => $remainingQty,
-                        'type'            => 'in',
-                        'created_by'      => $request->created_by
-                    ]);
+                    if ($existingInventory) {
+                        $existingInventory->qty += $remainingQty;
+                        $existingInventory->updated_by = $request->created_by;
+                        $existingInventory->save();
+
+                        StockTransaction::create([
+                            'inventory_id'    => $existingInventory->id,
+                            'reference_id'    => $purchase->id ?? null,
+                            'reference_type'  => 'purchase',
+                            'reference_date' => $request->purchase_date ?? now(),
+                            'quantity_change' => $remainingQty,
+                            'type'            => 'in',
+                            'created_by'      => $request->created_by
+                        ]);
+                    } else {
+                        $inventory = Inventory::create([
+                            'product_id'   => $item['product_id'],
+                            'warehouse_id' => $request->warehouse_id,
+                            'expired_date'  => $item['expired_date'],
+                            'qty'          => $remainingQty,
+                            'created_by'   => $request->created_by,
+                            'updated_by' => $request->updated_by ?? $request->created_by
+                        ]);
+
+                        StockTransaction::create([
+                            'inventory_id'    => $inventory->id,
+                            'reference_id'    => $purchase->id ?? null,
+                            'reference_type'  => 'purchase',
+                            'reference_date' => $request->purchase_date ?? now(),
+                            'quantity_change' => $remainingQty,
+                            'type'            => 'in',
+                            'created_by'      => $request->created_by
+                        ]);
+                    }
                 }
             
                 PurchaseDetail::create([
                     'purchase_id' => $purchase->id,
-                    'inventory_id' => $inventory->id ?? $negInv->id,
+                    'inventory_id' => $existingInventory -> id ?? $inventory->id ?? $negInv->id,
                     'product_id' => $item['product_id'],
                     'quantity' => $item['quantity'],
                     'price' => $price,
