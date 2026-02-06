@@ -41,7 +41,7 @@ class CustomerTransactionController extends Controller
         }
 
         return CustomerTransactionResource::collection(
-            $query->orderBy("id", "desc")->get(),
+            $query->orderBy("pay_date", "desc")->get(),
         );
     }
 

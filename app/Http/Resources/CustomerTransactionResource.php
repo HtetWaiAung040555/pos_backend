@@ -40,7 +40,7 @@ class CustomerTransactionResource extends JsonResource
             ] : null,
 
             'remark'     => $this->remark,
-            'pay_date'   => $this->pay_date,
+            'pay_date'   => $this->toLocalDateTime($this->pay_date),
 
             'created_by' => $this->createdBy?->name,
             'updated_by' => $this->updatedBy?->name,

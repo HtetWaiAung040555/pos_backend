@@ -2,6 +2,9 @@
 
 namespace App\Http\Resources\Concerns;
 
+use Carbon\Carbon;
+use Illuminate\Support\Facades\Log;
+
 trait FormatsLocalDateTime
 {
     protected function toLocalDateTime($value): ?string
@@ -11,7 +14,7 @@ trait FormatsLocalDateTime
         }
 
         if (is_string($value)) {
-            $value = $this->asDateTime($value);
+            $value = Carbon::parse($value);
         }
 
         return $value->timezone(config('app.timezone'))->toDateTimeString();

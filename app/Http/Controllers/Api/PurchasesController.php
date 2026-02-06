@@ -49,7 +49,7 @@ class PurchasesController extends Controller
             $query->whereDate('purchase_date', '<=', $request->end_date);
         }
 
-        return PurchaseResource::collection($query->get());
+        return PurchaseResource::collection($query->OrderBy('purchase_date')->get());
     }
 
     public function store(Request $request)

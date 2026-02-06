@@ -41,7 +41,7 @@ class SaleController extends Controller
             $query->whereDate('sale_date', '<=', $request->end_date);
         }
 
-        return SaleResource::collection($query->get());
+        return SaleResource::collection($query->OrderBy('sale_date')->get());
     }
 
     public function store(Request $request)
