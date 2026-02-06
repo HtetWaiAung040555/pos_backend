@@ -2,11 +2,14 @@
 
 namespace App\Http\Resources;
 
+use App\Http\Resources\Concerns\FormatsLocalDateTime;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
 class SaleResource extends JsonResource
 {
+    use FormatsLocalDateTime;
+
     public function toArray(Request $request): array
     {
         return [
@@ -32,13 +35,13 @@ class SaleResource extends JsonResource
             'paid_amount' => $this->paid_amount,
             'due_amount' => $this->due_amount,
             'remark' => $this->remark,
-            'sale_date' => $this->sale_date,
+            'sale_date' => $this->toLocalDateTime($this->sale_date),
             'created_by' => $this->createdBy->name ?? null,
             'counter' => $this->createdBy->counter->name ?? null,
             'updated_by' => $this->updatedBy->name ?? null,
             'details' => SaleDetailResource::collection($this->whenLoaded('details')),
-            'created_at' => $this->created_at,
-            'updated_at' => $this->updated_at,
+            'created_at' => $this->toLocalDateTime($this->created_at),
+            'updated_at' => $this->toLocalDateTime($this->updated_at),
         ];
     }
 }
