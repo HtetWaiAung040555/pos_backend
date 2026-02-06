@@ -17,8 +17,8 @@ class PromotionResource extends JsonResource
             'description' => $this->description,
             'discount_type' => $this->discount_type,
             'discount_value' => $this->discount_value,
-            'start_at' => $this->toLocalDateTime($this->start_at),
-            'end_at' => $this->toLocalDateTime($this->end_at),
+            'start_at' => $this->start_at,
+            'end_at' => $this->end_at,
             'status' => $this->status ? [
                 'id'   => $this->status->id,
                 'name' => $this->status->name,
