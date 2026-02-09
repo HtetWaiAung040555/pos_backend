@@ -8,7 +8,6 @@ use App\Models\CustomerTransaction;
 use App\Models\Customer;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Log;
 
 class CustomerTransactionController extends Controller
 {
@@ -17,12 +16,17 @@ class CustomerTransactionController extends Controller
         $query = CustomerTransaction::with([
             "customer",
             "paymentMethod",
+            "Status",
             "createdBy",
             "updatedBy",
         ]);
 
         if ($request->filled("customer_id")) {
             $query->where("customer_id", $request->customer_id);
+        }
+
+        if ($request->filled("status_id")) {
+            $query->where("status_id", $request->status_id);
         }
 
         if ($request->filled('start_date') && $request->filled('end_date')) {
@@ -37,7 +41,7 @@ class CustomerTransactionController extends Controller
         }
 
         return CustomerTransactionResource::collection(
-            $query->orderBy("id", "desc")->get(),
+            $query->orderBy("pay_date", "desc")->get(),
         );
     }
 
@@ -88,8 +92,7 @@ class CustomerTransactionController extends Controller
                 [
                     "error" => "Failed to create balance transaction",
                     "details" => $e->getMessage(),
-                ],
-                500,
+                ],500
             );
         }
     }
@@ -163,25 +166,33 @@ class CustomerTransactionController extends Controller
                 [
                     "error" => "Failed to update balance transaction",
                     "details" => $e->getMessage(),
-                ],
-                500,
+                ],500
             );
         }
     }
 
-    public function destroy($id)
+    public function destroy(Request $request, $id)
     {
-        $transaction = CustomerTransaction::where("type", "top-up")->findOrFail(
-            $id,
-        );
+        $transaction = CustomerTransaction::findOrFail($id);
         $customerId = $transaction->customer_id;
 
         DB::beginTransaction();
         try {
-            $transaction->delete();
-
             // Update balance after delete
-            // $this->updateCustomerBalance($customerId);
+            $customer = Customer::findOrFail($customerId);
+            if ($transaction->type == "top-up") {
+                $customer->balance -= $transaction->amount;
+            } else {
+                if ($transaction->payment_id == 2 || $transaction->payment_id == 3) {
+                    $customer->balance += abs($transaction->amount);
+                } 
+            }
+            $customer->save();
+
+            $transaction->update([
+                'status_id'  => 8,
+                'updated_by' => $request->user_id,
+            ]);
 
             DB::commit();
 
@@ -194,8 +205,7 @@ class CustomerTransactionController extends Controller
                 [
                     "error" => "Cannot delete balance transaction",
                     "details" => $e->getMessage(),
-                ],
-                400,
+                ],400
             );
         }
     }

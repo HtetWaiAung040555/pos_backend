@@ -2,10 +2,13 @@
 
 namespace App\Http\Resources;
 
+use App\Http\Resources\Concerns\FormatsLocalDateTime;
 use Illuminate\Http\Resources\Json\JsonResource;
 
 class PromotionResource extends JsonResource
 {
+    use FormatsLocalDateTime;
+
     public function toArray($request)
     {
         $data = [
@@ -14,13 +17,13 @@ class PromotionResource extends JsonResource
             'description' => $this->description,
             'discount_type' => $this->discount_type,
             'discount_value' => $this->discount_value,
-            'start_at' => $this->start_at,
-            'end_at' => $this->end_at,
+            'start_at' => $this->toLocalDateTime($this->start_at),
+            'end_at' => $this->toLocalDateTime($this->end_at),
             'status' => $this->status ? [
                 'id'   => $this->status->id,
                 'name' => $this->status->name,
             ] : null,
-            'void_at' => optional($this->void_at)->toDateTimeString(),
+            'void_at' => $this->toLocalDateTime($this->void_at),
             'void_by' => $this->voidByUser ? [
                 'id' => $this->voidByUser->id,
                 'name' => $this->voidByUser->name,
@@ -33,8 +36,8 @@ class PromotionResource extends JsonResource
                 'id' => $this->updatedBy->id,
                 'name' => $this->updatedBy->name,
             ],
-            'created_at' => optional($this->created_at)->toDateTimeString(),
-            'updated_at' => optional($this->updated_at)->toDateTimeString(),
+            'created_at' => $this->toLocalDateTime($this->created_at),
+            'updated_at' => $this->toLocalDateTime($this->updated_at),
         ];
 
         if ($this->relationLoaded('products')) {

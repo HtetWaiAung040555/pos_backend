@@ -13,6 +13,8 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
+use function Symfony\Component\Clock\now;
+
 class PurchasesController extends Controller
 {
     public function index(Request $request)
@@ -47,7 +49,7 @@ class PurchasesController extends Controller
             $query->whereDate('purchase_date', '<=', $request->end_date);
         }
 
-        return PurchaseResource::collection($query->get());
+        return PurchaseResource::collection($query->OrderBy('purchase_date')->get());
     }
 
     public function store(Request $request)
@@ -68,6 +70,7 @@ class PurchasesController extends Controller
             'products.*.expired_date' => 'nullable|date',
         ]);
 
+        Log::info("request :", $request->all());
         DB::beginTransaction();
         try {
             // Calculate total
@@ -155,6 +158,8 @@ class PurchasesController extends Controller
 
                 $remainingQty = $item['quantity'];
 
+                $expiredDate = $item['expired_date'] ?? null;
+
                 $negativeInventories = Inventory::where('product_id', $item['product_id'])
                 ->where('warehouse_id', $request->warehouse_id)
                 ->where('qty', '<', 0)
@@ -175,6 +180,7 @@ class PurchasesController extends Controller
                         'inventory_id'    => $negInv->id,
                         'reference_id'    => $purchase->id ?? null,
                         'reference_type'  => 'purchase',
+                        'reference_date' => $request->purchase_date ?? now(),
                         'quantity_change' => $offsetQty,
                         'type'            => 'in',
                         'created_by'      => $request->created_by
@@ -184,28 +190,51 @@ class PurchasesController extends Controller
                 }
 
                 if ($remainingQty > 0) {
-                    $inventory = Inventory::create([
-                        'product_id'   => $item['product_id'],
-                        'warehouse_id' => $request->warehouse_id,
-                        'expired_date'  => $item['expired_date'],
-                        'qty'          => $remainingQty,
-                        'created_by'   => $request->created_by,
-                        'updated_by' => $request->updated_by ?? $request->created_by
-                    ]);
+                    
+                    $existingInventory = Inventory::where('product_id', $item['product_id'])
+                        ->where('warehouse_id', $request->warehouse_id)
+                        ->where('expired_date', $expiredDate)
+                        ->first();
 
-                    StockTransaction::create([
-                        'inventory_id'    => $inventory->id,
-                        'reference_id'    => $purchase->id ?? null,
-                        'reference_type'  => 'purchase',
-                        'quantity_change' => $remainingQty,
-                        'type'            => 'in',
-                        'created_by'      => $request->created_by
-                    ]);
+                    if ($existingInventory) {
+                        $existingInventory->qty += $remainingQty;
+                        $existingInventory->updated_by = $request->created_by;
+                        $existingInventory->save();
+
+                        StockTransaction::create([
+                            'inventory_id'    => $existingInventory->id,
+                            'reference_id'    => $purchase->id ?? null,
+                            'reference_type'  => 'purchase',
+                            'reference_date' => $request->purchase_date ?? now(),
+                            'quantity_change' => $remainingQty,
+                            'type'            => 'in',
+                            'created_by'      => $request->created_by
+                        ]);
+                    } else {
+                        $inventory = Inventory::create([
+                            'product_id'   => $item['product_id'],
+                            'warehouse_id' => $request->warehouse_id,
+                            'expired_date'  => $item['expired_date'],
+                            'qty'          => $remainingQty,
+                            'created_by'   => $request->created_by,
+                            'updated_by' => $request->updated_by ?? $request->created_by
+                        ]);
+
+                        StockTransaction::create([
+                            'inventory_id'    => $inventory->id,
+                            'reference_id'    => $purchase->id ?? null,
+                            'reference_type'  => 'purchase',
+                            'reference_date' => $request->purchase_date ?? now(),
+                            'quantity_change' => $remainingQty,
+                            'type'            => 'in',
+                            'created_by'      => $request->created_by
+                        ]);
+                    }
                 }
             
                 PurchaseDetail::create([
                     'purchase_id' => $purchase->id,
-                    'inventory_id' => $inventory->id,
+                    'inventory_id' => $existingInventory -> id ?? $inventory->id ?? $negInv->id,
                     'product_id' => $item['product_id'],
                     'quantity' => $item['quantity'],
                     'price' => $price,
@@ -334,6 +363,7 @@ class PurchasesController extends Controller
                     "inventory_id" => $inventory->id,
                     "reference_id" => $purchase->id,
                     "reference_type" => "purchase_update",
+                    'reference_date' => $request->purchase_date ?? $purchase->purchase_date,
                     "quantity_change" => $detail->quantity,
                     "type" => "out",
                     "created_by" => $request->updated_by,
@@ -376,6 +406,7 @@ class PurchasesController extends Controller
                         'inventory_id'    => $inventory->id,
                         'reference_id'    => $purchase->id,
                         'reference_type'  => 'purchase_update',
+                        'reference_date' => $request->purchase_date ?? $purchase->purchase_date,
                         'quantity_change' => $item['quantity'],
                         'type'            => 'in',
                         'created_by'      => $request->updated_by,
@@ -460,6 +491,7 @@ class PurchasesController extends Controller
                     'inventory_id'    => $inventory->id ?? null,
                     'reference_id'    => $purchase->id,
                     'reference_type'  => 'purchase_void',
+                    'reference_date' => $purchase->purchase_date,
                     'quantity_change' => $detail->quantity,
                     'type'            => 'out',
                     'created_by'      => $request->void_by,

@@ -15,6 +15,7 @@ class Sale extends Model
     public $incrementing = false;
 
     protected $fillable = [
+        'id',
         'warehouse_id',
         'customer_id',
         'total_amount',
@@ -40,6 +41,11 @@ class Sale extends Model
         parent::boot();
 
         static::creating(function ($sale) {
+            
+            if (!empty($sale->id)) {
+                return;
+            }
+
             $dateCode = Carbon::now()->format('dmy');
 
             $userId = $sale->created_by;
