@@ -242,11 +242,9 @@ class PriceChangesController extends Controller
                     if ($priceChange->type === 'sale') {
                         //$product->old_price = $product->price;
                         $product->price = $item['new_price'];
-                        $oldPrice = $product->old_price;
                     } else {
                         //$product->old_purchase_price = $product->purchase_price;
                         $product->purchase_price = $item['new_price'];
-                        $oldPrice = $product->old_purchase_price;
                     }
 
                     $product->save();

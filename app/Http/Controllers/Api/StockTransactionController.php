@@ -12,7 +12,7 @@ class StockTransactionController extends Controller
 {
     public function index(Request $request)
     {
-        $query = StockTransaction::query()->with(["inventory.product"]);
+        $query = StockTransaction::query()->with(["inventory.product", 'sale', 'purchase', 'saleReturn' ]);
 
         // Filter by inventory
         if ($request->filled("inventory_id")) {
@@ -48,7 +48,6 @@ class StockTransactionController extends Controller
 
         // ⬇Latest first
         $transactions = $query->orderBy("created_at", "desc")->get();
-
         return StockTransactionResource::collection($transactions);
     }
 

@@ -18,6 +18,8 @@ return new class extends Migration
             $table->boolean('is_default')->default(false);
             $table->unsignedBigInteger('created_by');
             $table->unsignedBigInteger('updated_by');
+            $table->boolean('is_synced')->default(false);
+            $table->timestamp('synced_at')->nullable();
             $table->timestamps();
         });
     }

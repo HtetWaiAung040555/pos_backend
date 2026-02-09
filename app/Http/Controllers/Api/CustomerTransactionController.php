@@ -34,10 +34,26 @@ class CustomerTransactionController extends Controller
                 $request->start_date,
                 $request->end_date
             ]);
-        } elseif ($request->filled('start_date')) {
-            $query->where('pay_date', '>=', $request->start_date);
-        } elseif ($request->filled('end_date')) {
-            $query->where('pay_date', '<=', $request->end_date);
+
+            if (! $response->successful()) {
+                return response()->json([
+                    'message' => 'Cloud API request failed',
+                    'status'  => $response->status()
+                ], 500);
+            }
+
+            return response()->json([
+                'message' => 'Success',
+                'data' => $response->json('data')
+            ],200);
+
+        } catch (\Exception $e) {
+
+            return response()->json([
+                'message' => 'An error occurred during sync',
+                'error'   => $e->getMessage()
+            ], 500);
+            
         }
 
         return CustomerTransactionResource::collection(
@@ -59,7 +75,10 @@ class CustomerTransactionController extends Controller
 
         DB::beginTransaction();
         try {
-            $transaction = CustomerTransaction::create([
+
+            $cloudApiUrl = env('CLOUD_API_URL') . '/api/customers_transactions';
+            $apiToken = env('CLOUD_API_TOKEN');
+            $transaction = [
                 "customer_id" => $request->customer_id,
                 "type" => "top-up",
                 "amount" => $request->amount,
@@ -69,23 +88,26 @@ class CustomerTransactionController extends Controller
                 "pay_date" => $request->pay_date,
                 "created_by" => $request->created_by,
                 "updated_by" => $request->updated_by ?? $request->created_by,
-            ]);
+            ];
 
-            $customer = Customer::findOrFail($transaction->customer_id);
+            $response = Http::withHeaders([
+                'Authorization' => 'Bearer ' . $apiToken
+            ])->post($cloudApiUrl, $transaction);
 
-            $customer->balance += $transaction->amount;
+            Log::info($response->json());
+
+            $customer = Customer::findOrFail($request->customer_id);
+
+            $customer->balance += $request->amount;
             $customer->save();
 
             DB::commit();
 
-            return new CustomerTransactionResource(
-                $transaction->load([
-                    "customer",
-                    "paymentMethod",
-                    "createdBy",
-                    "updatedBy",
-                ]),
-            );
+            return response()->json([
+                'message' => 'Sync completed',
+                'data' => $response->json('data')
+            ],200);
+
         } catch (\Exception $e) {
             DB::rollBack();
             return response()->json(

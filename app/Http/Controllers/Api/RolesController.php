@@ -5,9 +5,8 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\RoleResource;
 use Illuminate\Http\Request;
-
 use App\Models\Role;
-use App\Models\Permission;
+use Illuminate\Support\Facades\Http;
 
 class RolesController extends Controller
 {
@@ -21,29 +20,47 @@ class RolesController extends Controller
 
     public function store(Request $request)
     {
-        $request->validate([
-            'name' => 'required|string|max:255',
-            'desc' => 'nullable|string|max:1000',
-            'status_id' => 'required|exists:statuses,id',
-            'created_by' => 'required|exists:users,id',
-            'updated_by' => 'nullable|exists:users,id',
-            'permissions' => 'array',
-            'permissions.*' => 'exists:permissions,id'
-        ]);
 
-        $role = Role::create([
-            'name' => $request->name,
-            'desc' => $request->desc,
-            'status_id' => $request->status_id,
-            'created_by' => $request->created_by,
-            'updated_by' => $request->updated_by ?? $request->created_by
-        ]);
+        try {
+            $response = Http::withToken(env('CLOUD_API_TOKEN'))
+            ->get(env('CLOUD_API_URL') . '/api/roles');
 
-        if ($request->has('permissions')) {
-            $role->permissions()->attach($request->permissions);
+            if (! $response->successful()) {
+                return response()->json([
+                    'message' => 'Cloud API request failed',
+                    'status'  => $response->status()
+                ], 500);
+            }
+
+            foreach ($response->json('data') as $item) {
+                $role = Role::updateOrCreate(
+                    ['id' => $item['id']],
+                    [
+                        'name' => $item['name'],
+                        'desc' => $item['desc'],
+                        'status_id' => $item['status']['id'],
+                        'created_by' => $item['created_by']['id'],
+                        'updated_by' => $request->updated_by ?? $request->created_by
+                    ]
+                );
+
+                if (!empty($item['permissions'])) {
+                    $permissionIds = collect($item['permissions'])->pluck('id')->toArray();
+                    $role->permissions()->sync($permissionIds);
+                }
+                
+            }
+            return response()->json(['message' => 'success'],200);
+
+        } catch (\Exception $e) {
+
+            return response()->json([
+                'message' => 'An error occurred during sync',
+                'error'   => $e->getMessage()
+            ], 500);
+            
         }
 
-        return new RoleResource($role->fresh(['status', 'createdBy', 'updatedBy', 'permissions']));
     }
 
 

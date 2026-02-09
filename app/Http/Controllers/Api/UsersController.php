@@ -6,25 +6,12 @@ use App\Http\Controllers\Controller;
 use App\Http\Resources\UserResource;
 use Illuminate\Http\Request;
 use App\Models\User;
-use App\Models\Role;
-use App\Models\Permission;
 
 class UsersController extends Controller
 {
     public function index()
     {
-        // $users = User::with(['branch', 'counter', 'status', 'createdBy', 'updatedBy'])->get();
-
-        $users = User::with([
-            "branch",
-            "counter",
-            "status",
-            "createdBy",
-            "updatedBy",
-        ])
-            ->where("status_id", "!=", 3) // exclude disabled
-            ->get();
-
+        $users = User::with([ "branch", "counter", "status", "createdBy", "updatedBy" ])->where("status_id", "!=", 3)->get();
         return UserResource::collection($users);
     }
 
@@ -54,32 +41,13 @@ class UsersController extends Controller
         ]);
 
         return new UserResource(
-            $user->fresh([
-                "branch",
-                "counter",
-                "role",
-                "status",
-                "createdBy",
-                "updatedBy",
-            ]),
+            $user->fresh(["branch", "counter", "role", "status", "createdBy", "updatedBy" ])
         );
     }
 
     public function show($id)
     {
-        // $user = User::with(['branch','counter','status','role','createdBy','updatedBy'])->findOrFail($id);
-
-        $user = User::with([
-            "branch",
-            "counter",
-            "status",
-            "role",
-            "createdBy",
-            "updatedBy",
-        ])
-            ->where("status_id", "!=", 3) // exclude disabled
-            ->findOrFail($id);
-
+        $user = User::with([ "branch", "counter", "status", "role", "createdBy", "updatedBy" ])->where("status_id", "!=", 3)->findOrFail($id);
         return new UserResource($user);
     }
 
@@ -89,14 +57,13 @@ class UsersController extends Controller
 
         $request->validate([
             "name" => "sometimes|string|max:255",
-            "email" =>
-                "sometimes|string|email|max:255|unique:users,email," . $id,
+            "email" => "sometimes|string|email|max:255|unique:users,email," . $id,
             "password" => "sometimes|string|min:8",
             "branch_id" => "exists:branches,id",
             "counter_id" => "nullable|exists:counters,id",
             "role_id" => "sometimes|exists:roles,id",
             "status_id" => "exists:statuses,id",
-            "updated_by" => "required|exists:users,id",
+            "updated_by" => "required|exists:users,id"
         ]);
 
         $data = $request->only([
@@ -106,7 +73,7 @@ class UsersController extends Controller
             "branch_id",
             "counter_id",
             "role_id",
-            "status_id",
+            "status_id"
         ]);
 
         if ($request->password) {
@@ -116,14 +83,7 @@ class UsersController extends Controller
         $user->update($data);
 
         return new UserResource(
-            $user->fresh([
-                "branch",
-                "counter",
-                "role",
-                "status",
-                "createdBy",
-                "updatedBy",
-            ]),
+            $user->fresh([ "branch", "counter", "role", "status", "createdBy", "updatedBy" ]),
         );
     }
 

@@ -5,10 +5,10 @@ use App\Models\Product;
 
 use App\Http\Controllers\Controller;
 use App\Http\Resources\ProductResource;
-use App\Models\Inventory;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\File;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
 class ProductsController extends Controller
@@ -181,6 +181,62 @@ class ProductsController extends Controller
                 })
             );
     }
-}
 
-// ->having('qty', '>', 0) // only sellable products
+    public function syncFromCloud(Request $request)
+    {
+        try{
+            
+            $response = Http::withToken(env('CLOUD_API_TOKEN'))
+                ->get(env('CLOUD_API_URL') . '/api/products');
+
+            if (! $response->successful()) {
+                return response()->json([
+                    'message' => 'Cloud API request failed',
+                    'status'  => $response->status()
+                ], 500);
+            }
+
+            $products = $response->json('data');
+
+            if (! is_array($products)) {
+                return response()->json([
+                    'message' => 'Invalid customer data'
+                ], 500);
+            }
+
+            foreach ($products as $item) {
+
+                Product::updateOrCreate(
+                    ['id' => $item['id']],
+                    [
+                        'name'       => $item['name'],
+                        'unit_id'    => $item['unit_id']['id'],
+                        'sec_prop'   => $item['sec_prop'],
+                        'category_id'=> $item['category_id']['id'],
+                        'purchase_price' => $item['purchase_price'],
+                        'old_purchase_price' => $item['old_purchase_price'],
+                        'price'      => $item['price'],
+                        'old_price'  => $item['old_price'],
+                        'barcode'    => $item['barcode'],
+                        'status_id'  => $item['status']['id'],
+                        'created_by' => $item['created_by']['id'],
+                        'updated_by' => $request->updated_by
+                    ]
+                );
+            }
+
+            return response()->json(['message' => 'success'], 200);
+
+        } catch (\Exception $e) {
+
+            return response()->json([
+                'message' => 'An error occurred during sync',
+                'error'   => $e->getMessage()
+            ], 500);
+            
+        }
+    }
+
+
+
+}

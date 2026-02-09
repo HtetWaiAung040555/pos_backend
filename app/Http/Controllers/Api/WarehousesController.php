@@ -25,8 +25,7 @@ class WarehousesController extends Controller
         $warehouse = Warehouse::create([
             "name" => $request->input("name"),
             "created_by" => $request->input("created_by"),
-            "updated_by" =>
-                $request->input("updated_by") ?? $request->input("created_by"),
+            "updated_by" => $request->input("updated_by") ?? $request->input("created_by"),
         ]);
 
         return new WarehouseResource(

@@ -22,6 +22,8 @@ return new class extends Migration
             $table->dateTime('sale_date');
             $table->unsignedBigInteger('created_by');
             $table->unsignedBigInteger('updated_by');
+            $table->boolean('is_synced')->default(false);
+            $table->timestamp('synced_at')->nullable();
             $table->unsignedBigInteger('void_by')->nullable();
             $table->foreign('void_by')->references('id')->on('users')->nullOnDelete();
             $table->timestamp('void_at')->nullable();
