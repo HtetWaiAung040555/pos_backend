@@ -8,6 +8,7 @@ use Illuminate\Http\Request;
 use App\Models\User;
 use App\Models\Role;
 use App\Models\Permission;
+use Illuminate\Support\Facades\Http;
 
 class UsersController extends Controller
 {
@@ -144,6 +145,58 @@ class UsersController extends Controller
                 ["error" => "User is referenced, cannot delete"],
                 400,
             );
+        }
+    }
+
+    public function syncFromCloud(Request $request)
+    {
+        try {
+            $response = Http::withToken(env('CLOUD_API_TOKEN'))
+                ->get(env('CLOUD_API_URL') . '/api/users');
+
+            if (! $response->successful()) {
+                return response()->json([
+                    'message' => 'Cloud API request failed',
+                    'status'  => $response->status()
+                ], 500);
+            }
+
+            $users = $response->json('data');
+
+            if (! is_array($users)) {
+                return response()->json([
+                    'message' => 'Invalid customer data'
+                ], 500);
+            }
+
+            foreach ($users as $user) {
+
+                User::updateOrCreate(
+                    ['id' => $user['id']],
+                    [
+                        'name'       => $user['name'],
+                        'email'      => $user['email'],
+                        'password'      => $user['password'],
+                        'branch_id'      => $user['branch']['id'],
+                        'counter_id'      => $user['counter']['id'],
+                        'role_id'      => $user['role']['id'],
+                        'status_id'  => $user['status']['id'],
+                        'created_by' => $user['created_by']['id'],
+                        'created_at' => $user['created_at'],
+                        'updated_by' => $request->updated_by
+                    ]
+                );
+            }
+
+            return response()->json(['message' => 'success'], 200);
+
+        } catch (\Exception $e) {
+
+            return response()->json([
+                'message' => 'An error occurred during sync',
+                'error'   => $e->getMessage()
+            ], 500);
+
         }
     }
 

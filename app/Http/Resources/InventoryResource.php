@@ -32,7 +32,11 @@ class InventoryResource extends JsonResource
                 'id'   => $this->warehouse->id,
                 'name' => $this->warehouse->name,
             ] : null,
-
+            'void_by' => $this->voidBy? [
+                'id' => $this->voidBy->id,
+                'name'=> $this->voidBy->name
+            ] : null,
+            'void_at' => $this->void_at ? $this->toLocalDateTime($this->void_at) : null,
             'created_by' => $this->createdBy?->name,
             'updated_by' => $this->updatedBy?->name,
             'created_at' => $this->toLocalDateTime($this->created_at),

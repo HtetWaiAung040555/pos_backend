@@ -11,7 +11,6 @@ use App\Models\PurchaseDetail;
 use App\Models\StockTransaction;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Log;
 
 use function Symfony\Component\Clock\now;
 
@@ -70,7 +69,6 @@ class PurchasesController extends Controller
             'products.*.expired_date' => 'nullable|date',
         ]);
 
-        Log::info("request :", $request->all());
         DB::beginTransaction();
         try {
             // Calculate total
@@ -113,7 +111,7 @@ class PurchasesController extends Controller
 
             //     $product = Product::findOrFail($item['product_id']);
             //     $price = $product->purchase_price;
-            
+
             //     $inventory = Inventory::firstOrCreate(
             //         [
             //             'product_id' => $item['product_id'],
@@ -126,11 +124,11 @@ class PurchasesController extends Controller
             //             'updated_by' => $request->created_by,
             //         ]
             //     );
-            
+
             //     $inventory->qty += $item['quantity'];
             //     $inventory->updated_by = $request->created_by;
             //     $inventory->save();
-            
+
             //     PurchaseDetail::create([
             //         'purchase_id' => $purchase->id,
             //         'inventory_id' => $inventory->id,
@@ -139,7 +137,7 @@ class PurchasesController extends Controller
             //         'price' => $price,
             //         'total' => $price * $item['quantity'],
             //     ]);
-            
+
             //     StockTransaction::create([
             //         'inventory_id'    => $inventory->id,
             //         'reference_id'    => $purchase->id,
@@ -190,7 +188,7 @@ class PurchasesController extends Controller
                 }
 
                 if ($remainingQty > 0) {
-                    
+
                     $existingInventory = Inventory::where('product_id', $item['product_id'])
                         ->where('warehouse_id', $request->warehouse_id)
                         ->where('expired_date', $expiredDate)
@@ -231,7 +229,7 @@ class PurchasesController extends Controller
                         ]);
                     }
                 }
-            
+
                 PurchaseDetail::create([
                     'purchase_id' => $purchase->id,
                     'inventory_id' => $existingInventory -> id ?? $inventory->id ?? $negInv->id,

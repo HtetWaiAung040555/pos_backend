@@ -18,6 +18,7 @@ class Customer extends Model
         'name',
         'phone',
         'address',
+        'balance',
         'status_id',
         'is_default',
         'created_by',

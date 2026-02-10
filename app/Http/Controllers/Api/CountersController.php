@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use App\Models\Counter;
 use App\Http\Resources\CounterResource;
+use Illuminate\Support\Facades\Http;
 
 class CountersController extends Controller
 {
@@ -15,27 +16,75 @@ class CountersController extends Controller
         return CounterResource::collection($counters);
     }
 
+    // public function store(Request $request)
+    // {
+    //     $request->validate([
+    //         'name' => 'required|string|max:255',
+    //         'desc' => 'nullable|string|max:1000',
+    //         'branch_id' => 'required|exists:branches,id',
+    //         'status_id' => 'required|exists:statuses,id',
+    //         'created_by' => 'required|exists:users,id',
+    //         'updated_by' => 'nullable|exists:users,id'
+    //     ]);
+
+    //     $counter = Counter::create([
+    //         'name' => $request->name,
+    //         'desc' => $request->desc,
+    //         'branch_id' => $request->branch_id,
+    //         'status_id' => $request->status_id,
+    //         'created_by' => $request->created_by,
+    //         'updated_by' => $request->updated_by ?? $request->created_by,
+    //     ]);
+
+    //     return new CounterResource($counter->fresh(['branch', 'status', 'createdBy', 'updatedBy']));
+    // }
+
     public function store(Request $request)
     {
-        $request->validate([
-            'name' => 'required|string|max:255',
-            'desc' => 'nullable|string|max:1000',
-            'branch_id' => 'required|exists:branches,id',
-            'status_id' => 'required|exists:statuses,id',
-            'created_by' => 'required|exists:users,id',
-            'updated_by' => 'nullable|exists:users,id'
-        ]);
 
-        $counter = Counter::create([
-            'name' => $request->name,
-            'desc' => $request->desc,
-            'branch_id' => $request->branch_id,
-            'status_id' => $request->status_id,
-            'created_by' => $request->created_by,
-            'updated_by' => $request->updated_by ?? $request->created_by,
-        ]);
+        try {
+            $response = Http::withToken(env('CLOUD_API_TOKEN'))
+            ->get(env('CLOUD_API_URL') . '/api/counters');
 
-        return new CounterResource($counter->fresh(['branch', 'status', 'createdBy', 'updatedBy']));
+            if (! $response->successful()) {
+                return response()->json([
+                    'message' => 'Cloud API request failed',
+                    'status'  => $response->status()
+                ], 500);
+            }
+
+            foreach ($response->json('data') as $item) {
+                Counter::updateOrCreate(
+                    ['id' => $item['id']],
+                    [
+                        'name' => $item['name'],
+                        'desc' => $item['desc'],
+                        'branch_id' => $item['branch']['id'],
+                        'status_id' => $item['status']['id'],
+                        'created_by' => $item['created_by']['id'],
+                        'created_at' => $item['created_at'],
+                        'updated_by' => $request->updated_by ?? $request->created_by
+                    ]
+                );
+            }
+
+            $counters = Counter::with(['branch', 'status', 'createdBy', 'updatedBy'])->get();
+            $allCounters = CounterResource::collection($counters);
+
+            return response()->json([
+                'message' => 'success',
+                'data' => $allCounters
+            ],200);
+
+        } catch (\Exception $e) {
+
+            return response()->json([
+                'message' => 'An error occurred during sync',
+                'error'   => $e->getMessage()
+            ], 500);
+
+        }
+
     }
 
     public function show(string $id)
@@ -71,5 +120,5 @@ class CountersController extends Controller
             return response()->json(['error' => 'Counter cannot be deleted'], 400);
         }
     }
-    
+
 }

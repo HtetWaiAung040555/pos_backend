@@ -10,8 +10,10 @@ use App\Models\Sale;
 use App\Models\SaleDetail;
 use App\Models\StockTransaction;
 use App\Models\CustomerTransaction;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Http;
 
 use function Symfony\Component\Clock\now;
 
@@ -91,7 +93,9 @@ class SaleController extends Controller
                 'remark' => $request->remark ?? null,
                 'sale_date' => $request->sale_date ?? now(),
                 'created_by' => $request->created_by,
-                'updated_by' => $request->updated_by ?? $request->created_by
+                'updated_by' => $request->updated_by ?? $request->created_by,
+                'is_synced' => false,
+                'synced_at' => null,
             ]);
 
             // 4. Create Sale Details and Stock Transactions
@@ -380,12 +384,12 @@ class SaleController extends Controller
 
     //             // $inventory = Inventory::firstOrCreate(
     //             //     [
-    //             //         'product_id' => $product->id, 
+    //             //         'product_id' => $product->id,
     //             //         'warehouse_id' => $request->warehouse_id,
     //             //         'qty' => 0,
     //             //         'name' => $product->name,
     //             //         'created_by' => $request->created_by,
-    //             //         'updated_by' => $request->updated_by ?? $request->created_by, 
+    //             //         'updated_by' => $request->updated_by ?? $request->created_by,
     //             //     ]
     //             // );
 
@@ -753,4 +757,69 @@ class SaleController extends Controller
             ], 500);
         }
     }
+
+    public function syncToCloud(Request $request)
+    {
+        $unsyncedSales = Sale::with(['details', 'details.product'])
+                            ->where('is_synced', false)
+                            ->get();
+
+        if ($unsyncedSales->isEmpty()) {
+            return response()->json(['message' => 'No sales to sync']);
+        }
+
+        $cloudApiUrl = env('CLOUD_API_URL') . '/api/sales';
+        $apiToken = env('CLOUD_API_TOKEN');
+        $results = [];
+
+        foreach ($unsyncedSales as $sale) {
+            try {
+                $payload = $sale->toArray();
+
+                $payload['products'] = $sale->details;
+
+                $payload['sale_date'] = Carbon::parse($sale->sale_date)
+                                     ->setTimezone('Asia/Yangon')
+                                     ->format('Y-m-d H:i:s');
+
+                $response = Http::withHeaders([
+                    'Authorization' => 'Bearer ' . $apiToken
+                ])->post($cloudApiUrl, $payload);
+
+                if ($response->successful()) {
+
+                    $sale->update([
+                        'updated_by' => $request->updated_by,
+                        'updated_at' => now(),
+                        'is_synced' => true,
+                        'synced_at' => now()
+                    ]);
+
+                    $results[] = [
+                        'sale_id' => $sale->id
+                    ];
+
+                } else {
+
+                    $results[] = [
+                        'sale_id' => $sale->id,
+                        'error' => $response->body()
+                    ];
+
+                }
+
+            } catch (\Exception $e) {
+                $results[] = [
+                    'sale_id' => $sale->id,
+                    'error' => $e->getMessage()
+                ];
+            }
+        }
+
+        return response()->json([
+            'message' => 'Sync completed',
+            'results' => $results
+        ],200);
+    }
+
 }

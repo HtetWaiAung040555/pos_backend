@@ -7,8 +7,8 @@ use Illuminate\Http\Request;
 use App\Models\Inventory;
 use App\Http\Resources\InventoryResource;
 use App\Models\StockTransaction;
-use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
 use function Symfony\Component\Clock\now;
@@ -310,6 +310,62 @@ class InventoriesController extends Controller
         );
     }
 
+    public function syncFromCloud(Request $request)
+    {
+        try {
+            $response = Http::withToken(env('CLOUD_API_TOKEN'))
+                ->get(env('CLOUD_API_URL') . '/api/inventories');
+
+            if (! $response->successful()) {
+                Log::info('response', $request->all());
+                return response()->json([
+                    'message' => 'Cloud API request failed',
+                    'status'  => $response->status()
+                ], 500);
+            }
+
+            $inventories = $response->json('data');
+
+            //Log::info('Inventories', $inventories);
+
+            if (! is_array($inventories)) {
+                return response()->json([
+                    'message' => 'Invalid inventory data'
+                ], 500);
+            }
+
+            foreach ($inventories as $item) {
+
+                $inventory = Inventory::updateOrCreate(
+                    ['id' => $item['id']],
+                    [
+                        'name'       => $item['name'],
+                        'qty'      => $item['qty'],
+                        'expired_date'      => $item['expired_date'] ?? null,
+                        'product_id'  => $item['product']['id'],
+                        'warehouse_id'      => $item['warehouse']['id'],
+                        'created_by' => $item['created_by']['id'],
+                        'created_at' => $item['created_at'],
+                        'updated_by' => $request->updated_by,
+                        'void_by' => $item['void_by'] ? $item['void_by']['id'] : null,
+                        'void_at' => $item['void_at']
+                    ]
+                );
+            }
+
+            return response()->json(['message' => 'success'], 200);
+
+        } catch (\Exception $e) {
+
+            return response()->json([
+                'message' => 'An error occurred during sync',
+                'error'   => $e->getMessage()
+            ], 500);
+
+        }
+    }
+
 }
+
 
 // ->where('status_id', '!=', '8')

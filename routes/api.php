@@ -40,7 +40,7 @@ Route::middleware(['auth:sanctum'])->group(function () {
     Route::get('/users', [UsersController::class, 'index']);
     Route::get('/users/{id}', [UsersController::class, 'show']);
     Route::post('/users', [UsersController::class, 'store']);
-    
+
     Route::delete('/users/{id}', [UsersController::class, 'destroy']);
 
     Route::apiResource('/roles', RolesController::class);
@@ -78,6 +78,7 @@ Route::middleware(['auth:sanctum'])->group(function () {
     Route::apiResource('/categories', CategoriesController::class);
 
     Route::get('/products/saleproducts', [ProductsController::class, 'saleproducts']);
+    Route::post('/products/sync', [ProductsController::class, 'syncFromCloud']);
     Route::apiResource('/products', ProductsController::class);
     // Route::get('/products', [ProductsController::class, 'index']);
     // Route::get('/products/{id}', [ProductsController::class, 'show']);
@@ -89,11 +90,13 @@ Route::middleware(['auth:sanctum'])->group(function () {
 
     // Route::get('/inventories/saleproducts', [InventoriesController::class, 'saleproducts']);
     Route::post('/inventories/adjust', [InventoriesController::class, 'adjust']);
+    Route::post('/inventories/sync', [InventoriesController::class, 'syncFromCloud']);
     Route::apiResource('/inventories', InventoriesController::class);
 
     Route::apiResource('/warehouses', WarehousesController::class);
 
     Route::get('/customers/last-id', [CustomersController::class, 'getLastId']);
+    Route::post('/customers/sync', [CustomersController::class, 'syncFromCloud']);
     Route::apiResource('/customers', CustomersController::class);
 
     Route::apiResource('/suppliers', SuppliersController::class);
@@ -102,6 +105,7 @@ Route::middleware(['auth:sanctum'])->group(function () {
 
     Route::apiResource('/purchase_returns', PurchaseReturnController::class);
 
+    Route::post('/sales/sync_to_cloud', [SaleController::class, 'syncToCloud']);
     Route::apiResource('/sales', SaleController::class);
 
     Route::apiResource('/sale_returns',SaleReturnController::class);
@@ -113,6 +117,7 @@ Route::middleware(['auth:sanctum'])->group(function () {
     Route::apiResource('/pricechanges', PriceChangesController::class);
 
     Route::post('/promotions/checkprice', [PromotionsController::class, 'checkPrice']);
+    Route::post('/promotions/sync', [PromotionsController::class, 'syncFromCloud']);
     Route::apiResource('/promotions', PromotionsController::class);
 
 });

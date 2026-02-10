@@ -7,7 +7,6 @@ use App\Http\Resources\PriceChangeResource;
 use App\Models\PriceChange;
 use App\Models\Product;
 use App\Models\Status;
-use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
@@ -60,7 +59,7 @@ class PriceChangesController extends Controller
             'start_at' => $request->start_at ?: null,
             'end_at' => $request->end_at ?: null,
         ]);
-        
+
         // $start = $request->start_at ? Carbon::parse($request->start_at) : now();
         // $end = $request->end_at ? Carbon::parse($request->end_at) : now();
 
@@ -118,7 +117,7 @@ class PriceChangesController extends Controller
                 $product = Product::lockForUpdate()->findOrFail($item['product_id']);
 
                 if ($priceChange->type === 'sale') {
-                    $product->old_price = $product->price == 0 ? $item['new_price'] : $product->price;  
+                    $product->old_price = $product->price == 0 ? $item['new_price'] : $product->price;
                     $product->price = $item['new_price'];
                     $oldPrice = $product->old_price;
                 } else {
@@ -160,7 +159,7 @@ class PriceChangesController extends Controller
         $price_changes = PriceChange::with('products')->findOrFail($id);
         return new PriceChangeResource($price_changes);
     }
-    
+
     public function update(Request $request, string $id)
     {
         $priceChange = PriceChange::findOrFail($id);
@@ -276,12 +275,12 @@ class PriceChangesController extends Controller
     public function destroy(Request $request, string $id)
     {
         DB::beginTransaction();
-    
+
         try {
             $priceChange = PriceChange::with('products')->findOrFail($id);
-    
+
             $voidStatus = \App\Models\Status::where('name', 'void')->firstOrFail();
-    
+
             // Revert product prices before voiding
             foreach ($priceChange->products as $product) {
                 if ($priceChange->type === 'sale') {
@@ -293,30 +292,30 @@ class PriceChangesController extends Controller
                 }
                 $product->save();
             }
-    
+
             // Set void info
             $priceChange->status_id = $voidStatus->id;
             $priceChange->void_at   = now();
             $priceChange->void_by   = $request->void_by;
             $priceChange->save();
-    
+
             // Optionally clear pivot table
             // $priceChange->products()->sync([]);
-    
+
             DB::commit();
-    
+
             return response()->json([
                 'message' => 'Price Change voided successfully and prices reverted.'
             ], 200);
-    
+
         } catch (\Exception $e) {
             DB::rollBack();
-    
+
             return response()->json([
                 'error'   => 'Failed to void price change',
                 'details' => $e->getMessage()
             ], 500);
         }
     }
-    
+
 }

@@ -6,7 +6,6 @@ use App\Http\Controllers\Controller;
 use App\Http\Resources\StockTransactionResource;
 use App\Models\StockTransaction;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Log;
 
 class StockTransactionController extends Controller
 {

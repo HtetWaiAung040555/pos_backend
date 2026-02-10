@@ -4,7 +4,6 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Http\Resources\SaleReturnResource;
-use App\Models\CustomerTransaction;
 use App\Models\Inventory;
 use App\Models\Sale;
 use App\Models\SaleReturn;
@@ -12,9 +11,7 @@ use App\Models\SaleReturnDetail;
 use App\Models\StockTransaction;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\ValidationException;
-use PDO;
 
 class SaleReturnController extends Controller
 {

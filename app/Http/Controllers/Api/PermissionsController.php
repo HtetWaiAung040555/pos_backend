@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Resources\PermissionResource;
 use App\Models\Permission;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Http;
 
 class PermissionsController extends Controller
 {
@@ -17,23 +18,67 @@ class PermissionsController extends Controller
     }
 
 
+    // public function store(Request $request)
+    // {
+    //     $request->validate([
+    //         'name' => 'required|string|max:255',
+    //         'action' => 'required|string|max:1000',
+    //         'created_by' => 'required|exists:users,id',
+    //         'updated_by' => 'nullable|exists:users,id'
+    //     ]);
+
+    //     $permission = Permission::create([
+    //         'name' => $request->name,
+    //         'action' => $request->action,
+    //         'created_by' => $request->created_by,
+    //         'updated_by' => $request->updated_by ?? $request->created_by
+    //     ]);
+
+    //     return new PermissionResource($permission->fresh(['createdBy', 'updatedBy', 'roles']));
+    // }
+
     public function store(Request $request)
     {
-        $request->validate([
-            'name' => 'required|string|max:255',
-            'action' => 'required|string|max:1000',
-            'created_by' => 'required|exists:users,id',
-            'updated_by' => 'nullable|exists:users,id'
-        ]);
+        try {
+            $response = Http::withToken(env('CLOUD_API_TOKEN'))
+            ->get(env('CLOUD_API_URL') . '/api/permissions');
 
-        $permission = Permission::create([
-            'name' => $request->name,
-            'action' => $request->action,
-            'created_by' => $request->created_by,
-            'updated_by' => $request->updated_by ?? $request->created_by
-        ]);
+            if (! $response->successful()) {
+                return response()->json([
+                    'message' => 'Cloud API request failed',
+                    'status'  => $response->status()
+                ], 500);
+            }
 
-        return new PermissionResource($permission->fresh(['createdBy', 'updatedBy', 'roles']));
+            foreach ($response->json("data") as $item) {
+                Permission::updateOrCreate(
+                    ['id' => $item['id']],
+                    [
+                        'name' => $item['name'],
+                        'action' => $item['action'],
+                        'created_by' => $item['created_by']['id'],
+                        'created_at' => $item['created_at'],
+                        'updated_by' => $request->updated_by ?? $request->created_by
+                    ]
+                );
+            }
+
+            $permissions = Permission::with(['createdBy', 'updatedBy'])->get();
+            $allPermissions = PermissionResource::collection($permissions);
+
+            return response()->json([
+                'message' => 'success',
+                'data' => $allPermissions
+            ],200);
+
+        } catch (\Exception $e) {
+
+            return response()->json([
+                'message' => 'An error occurred during sync',
+                'error'   => $e->getMessage()
+            ], 500);
+
+        }
     }
 
 

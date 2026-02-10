@@ -8,6 +8,7 @@ use App\Models\Promotion;
 use App\Models\Status;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Http;
 
 class PromotionsController extends Controller
 {
@@ -143,7 +144,7 @@ class PromotionsController extends Controller
         try {
             $promotion = Promotion::with('products')->findOrFail($id);
 
-            $voidStatus = \App\Models\Status::where('name', 'void')->firstOrFail();
+            $voidStatus = Status::where('name', 'void')->firstOrFail();
 
             $promotion->status_id = $voidStatus->id;
             $promotion->void_at   = now();
@@ -209,6 +210,72 @@ class PromotionsController extends Controller
             'discount_value'  => $promotion ? $promotion->discount_value : 0,
             'discount_amount' => $discount_amount
         ]);
+    }
+
+    public function syncFromCloud(Request $request)
+    {
+        try {
+            $response = Http::withToken(env('CLOUD_API_TOKEN'))
+                ->get(env('CLOUD_API_URL') . '/api/promotions');
+
+            if (! $response->successful()) {
+                return response()->json([
+                    'message' => 'Cloud API request failed',
+                    'status'  => $response->status()
+                ], 500);
+            }
+
+            $promotions = $response->json('data');
+
+            if (! is_array($promotions)) {
+                return response()->json([
+                    'message' => 'Invalid promotion data format'
+                ], 500);
+            }
+
+            DB::beginTransaction();
+
+            foreach ($promotions as $item) {
+
+                $promotion = Promotion::updateOrCreate(
+                    ['id' => $item['id']],
+                    [
+                        'name'           => $item['name'],
+                        'description'    => $item['description'],
+                        'discount_type'  => $item['discount_type'],
+                        'discount_value' => (float) ($item['discount_value']),
+                        'start_at'       => $item['start_at'],
+                        'end_at'         => $item['end_at'],
+                        'status_id'      => $item['status']['id'],
+                        'void_at'        => $item['void_at'],
+                        'void_by'        => $item['void_by']['id'] ?? null,
+                        'created_by'     => $item['created_by']['id'],
+                        'created_at' => $item['created_at'],
+                        'updated_by'     => $request->updated_by
+                    ]
+                );
+
+                if (!empty($item['products']) && is_array($item['products'])) {
+                    $productIds = collect($item['products'])->pluck('id')->filter()->toArray();
+                    $promotion->products()->sync($productIds);
+                } else {
+                    $promotion->products()->sync([]);
+                }
+            }
+
+            DB::commit();
+
+            return response()->json(['message' => 'sucess'], 200);
+
+        } catch (\Throwable $e) {
+
+
+            DB::rollBack();
+
+            return response()->json([
+                'message' => 'An error occurred during promotion sync'
+            ], 500);
+        }
     }
 
     // Check if products are already inside another active promotion.

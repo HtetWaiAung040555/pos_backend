@@ -27,6 +27,8 @@ class Sale extends Model
         'sale_date',
         'created_by',
         'updated_by',
+        'is_synced',
+        'synced_at',
         'void_at',
         'void_by',
     ];
@@ -41,7 +43,7 @@ class Sale extends Model
         parent::boot();
 
         static::creating(function ($sale) {
-            
+
             if (!empty($sale->id)) {
                 return;
             }
