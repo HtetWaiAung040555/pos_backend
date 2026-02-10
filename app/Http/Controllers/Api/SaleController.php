@@ -91,7 +91,9 @@ class SaleController extends Controller
                 'remark' => $request->remark ?? null,
                 'sale_date' => $request->sale_date ?? now(),
                 'created_by' => $request->created_by,
-                'updated_by' => $request->updated_by ?? $request->created_by
+                'updated_by' => $request->updated_by ?? $request->created_by,
+                'is_synced' => true,
+                'sync_at' => now(),
             ]);
 
             // 4. Create Sale Details and Stock Transactions
