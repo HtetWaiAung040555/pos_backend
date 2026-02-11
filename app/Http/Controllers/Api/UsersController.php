@@ -9,6 +9,7 @@ use App\Models\User;
 use App\Models\Role;
 use App\Models\Permission;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 
 class UsersController extends Controller
 {
@@ -16,14 +17,8 @@ class UsersController extends Controller
     {
         // $users = User::with(['branch', 'counter', 'status', 'createdBy', 'updatedBy'])->get();
 
-        $users = User::with([
-            "branch",
-            "counter",
-            "status",
-            "createdBy",
-            "updatedBy",
-        ])
-            ->where("status_id", "!=", 3) // exclude disabled
+        $users = User::with(["branch","counter","status","createdBy","updatedBy",])
+            ->where("status_id", "!=", 3)
             ->get();
 
         return UserResource::collection($users);
@@ -188,7 +183,16 @@ class UsersController extends Controller
                 );
             }
 
-            return response()->json(['message' => 'success'], 200);
+            $userList = User::with(["branch","counter","status","createdBy","updatedBy",])
+                ->where("status_id", "!=", 3)
+                ->get();
+
+            $allUsers = UserResource::collection($userList);
+
+            return response()->json([
+                'message' => 'success',
+                'data' => $allUsers
+            ],200);
 
         } catch (\Exception $e) {
 

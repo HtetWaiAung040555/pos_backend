@@ -229,7 +229,7 @@ class PromotionsController extends Controller
 
             if (! is_array($promotions)) {
                 return response()->json([
-                    'message' => 'Invalid promotion data format'
+                    'message' => 'Invalid promotion data'
                 ], 500);
             }
 
@@ -273,7 +273,8 @@ class PromotionsController extends Controller
             DB::rollBack();
 
             return response()->json([
-                'message' => 'An error occurred during promotion sync'
+                'message' => 'An error occurred during promotion sync',
+                'error' => $e->getMessage()
             ], 500);
         }
     }

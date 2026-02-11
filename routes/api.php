@@ -37,10 +37,10 @@ Route::middleware(['auth:sanctum'])->group(function () {
 
     Route::post('/logout', [AuthController::class, 'logout']);
 
+    Route::post('/users/sync', [UsersController::class, 'syncFromCloud']);
     Route::get('/users', [UsersController::class, 'index']);
     Route::get('/users/{id}', [UsersController::class, 'show']);
     Route::post('/users', [UsersController::class, 'store']);
-
     Route::delete('/users/{id}', [UsersController::class, 'destroy']);
 
     Route::apiResource('/roles', RolesController::class);

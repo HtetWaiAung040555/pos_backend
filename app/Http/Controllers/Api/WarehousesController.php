@@ -61,7 +61,14 @@ class WarehousesController extends Controller
                 );
 
             }
-            return response()->json(['message' => 'success'],200);
+
+            $warehouses = Warehouse::with(["createdBy", "updatedBy"])->get();
+            $allWarehouses =  WarehouseResource::collection($warehouses);
+
+            return response()->json([
+                'message' => 'success',
+                'data' => $allWarehouses
+            ],200);
 
         } catch (\Exception $e) {
 

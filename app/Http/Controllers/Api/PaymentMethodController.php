@@ -50,7 +50,7 @@ class PaymentMethodController extends Controller
                 ], 500);
             }
 
-            foreach ($response->json() as $item) {
+            foreach ($response->json('data') as $item) {
                 PaymentMethod::updateOrCreate(
                     ['id' => $item['id']],
                     [
@@ -63,7 +63,14 @@ class PaymentMethodController extends Controller
                     ]
                 );
             }
-            return response()->json(['message' => 'success'],200);
+
+            $paymentMethods = PaymentMethod::with(['status', 'createdBy', 'updatedBy'])->get();
+            $allPaymentMethods = PaymentMethodResource::collection($paymentMethods);
+
+            return response()->json([
+                'message' => 'success',
+                'data' => $allPaymentMethods
+            ],200);
 
         } catch (\Exception $e) {
 

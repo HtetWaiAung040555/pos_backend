@@ -55,9 +55,6 @@ class UnitsController extends Controller
                     ['id' => $item['id']],
                     [
                         'name' => $item['name'],
-                        'phone' => $item['phone'],
-                        'location' => $item['location'],
-                        'warehouse_id' => $item['warehouse']['id'],
                         'status_id' => $item['status']['id'],
                         'created_by' => $item['created_by']['id'],
                         'created_at' => $item['created_at'],
@@ -66,7 +63,14 @@ class UnitsController extends Controller
                 );
 
             }
-            return response()->json(['message' => 'success'],200);
+
+            $units = Unit::with(['status','createdBy', 'updatedBy'])->get();
+            $allUnits = UnitResource::collection($units);
+
+            return response()->json([
+                'message' => 'success',
+                'data' => $allUnits
+            ],200);
 
         } catch (\Exception $e) {
 

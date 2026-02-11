@@ -7,7 +7,9 @@ use App\Http\Resources\RoleResource;
 use Illuminate\Http\Request;
 
 use App\Models\Role;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 
 class RolesController extends Controller
 {
@@ -60,7 +62,20 @@ class RolesController extends Controller
                 ], 500);
             }
 
-            foreach ($response->json('data') as $item) {
+            $roles = $response->json('data');
+
+            if (! is_array($roles)) {
+                return response()->json([
+                    'message' => 'Invalid role data'
+                ], 500);
+            }
+
+            Log::info('roles',$roles);
+
+            DB::beginTransaction();
+
+            foreach ($roles as $item) {
+
                 $role = Role::updateOrCreate(
                     ['id' => $item['id']],
                     [
@@ -76,12 +91,25 @@ class RolesController extends Controller
                 if (!empty($item['permissions'])) {
                     $permissionIds = collect($item['permissions'])->pluck('id')->toArray();
                     $role->permissions()->sync($permissionIds);
+                } else {
+                    $role->permissions()->sync([]);
                 }
 
             }
-            return response()->json(['message' => 'success'],200);
 
-        } catch (\Exception $e) {
+            DB::commit();
+
+            $roleList = Role::with(['status', 'createdBy', 'updatedBy', 'permissions'])->get();
+            $allRoles = RoleResource::collection($roleList);
+
+            return response()->json([
+                'message' => 'success',
+                'data' => $allRoles
+            ],200);
+
+        } catch (\Throwable $e) {
+
+            DB::rollback();
 
             return response()->json([
                 'message' => 'An error occurred during sync',
