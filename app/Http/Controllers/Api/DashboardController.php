@@ -15,7 +15,7 @@ class DashboardController extends Controller
     {
         $warehouseId = $request->warehouse_id;
 
-        $saleQuery = Sale::query()->where('status_id', 7)->whereNull('void_at');  
+        $saleQuery = Sale::query()->where('status_id', 7)->whereNull('void_at');
 
         if ($warehouseId) {
             $saleQuery->where('warehouse_id', $warehouseId);
@@ -140,7 +140,8 @@ class DashboardController extends Controller
             ->where('qty', '!=', 0)
             ->whereNull('void_at')
             ->groupBy('product_id')
-            ->with('product');
+            ->with('product')
+            ->orderBy('total_qty', 'asc');
 
         if ($warehouseId) {
             $query->where('warehouse_id', $warehouseId);
