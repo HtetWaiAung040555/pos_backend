@@ -6,8 +6,11 @@ use App\Http\Controllers\Controller;
 use App\Http\Resources\CustomerTransactionResource;
 use App\Models\CustomerTransaction;
 use App\Models\Customer;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\HTTP;
+use Illuminate\Support\Facades\Log;
 
 class CustomerTransactionController extends Controller
 {
@@ -67,6 +70,7 @@ class CustomerTransactionController extends Controller
                 "status_id" => 7,
                 "remark" => $request->remark,
                 "pay_date" => $request->pay_date,
+                "is_synced" => false,
                 "created_by" => $request->created_by,
                 "updated_by" => $request->updated_by ?? $request->created_by,
             ]);
@@ -122,9 +126,7 @@ class CustomerTransactionController extends Controller
             "updated_by" => "required|exists:users,id",
         ]);
 
-        $transaction = CustomerTransaction::where("type", "top-up")->findOrFail(
-            $id,
-        );
+        $transaction = CustomerTransaction::where("type", "top-up")->findOrFail($id);
 
         $oldCustomer = Customer::findOrFail($transaction->customer_id);
 
@@ -185,7 +187,7 @@ class CustomerTransactionController extends Controller
             } else {
                 if ($transaction->payment_id == 2 || $transaction->payment_id == 3) {
                     $customer->balance += abs($transaction->amount);
-                } 
+                }
             }
             $customer->save();
 
@@ -210,7 +212,74 @@ class CustomerTransactionController extends Controller
         }
     }
 
-    // Update customer balance based on top-up transactions
+    public function syncToCloud(Request $request)
+    {
+
+        $unsyncedTransaction = CustomerTransaction::where('is_synced', false)->get();
+
+        if ($unsyncedTransaction->isEmpty()) {
+            return response()->json(
+                ['message' => 'No sales to sync']
+            );
+        }
+
+        $cloudApiUrl = env('CLOUD_API_URL') . '/api/customers_transactions';
+        $apiToken = env('CLOUD_API_TOKEN');
+        $results = [];
+
+        foreach ($unsyncedTransaction as $transaction) {
+            try {
+                $payload = $transaction->toArray();
+                $payload['pay_date'] = Carbon::parse($transaction->pay_date)
+                                     ->setTimezone('Asia/Yangon')
+                                     ->format('Y-m-d H:i:s');
+
+                $response = Http::withHeaders([
+                    'Authorization' => 'Bearer ' . $apiToken
+                ])->post($cloudApiUrl, $payload);
+
+                if ($response->successful()) {
+
+                    $transaction->update([
+                        'updated_by' => $request->updated_by,
+                        'updated_at' => now(),
+                        'is_synced' => true,
+                        'synced_at' => now()
+                    ]);
+
+                    $results[] = [
+                        'id' => $transaction->id
+                    ];
+
+                } else {
+
+                    $results[] = [
+                        'id' => $transaction->id,
+                        'error' => $response->body()
+                    ];
+
+                }
+
+            } catch (\Exception $e) {
+                return response()->json(
+                    [
+                        "error" => "Failed to update balance transaction",
+                        "details" => $e->getMessage(),
+                    ],500
+                );
+            }
+        }
+
+        return response()->json([
+            'message' => 'Sync completed',
+            'results' => $results
+        ],200);
+    }
+
+
+}
+
+// Update customer balance based on top-up transactions
     // private function updateCustomerBalance($customerId, $amount)
     // {
     //     $customer = Customer::findOrFail($customerId);
@@ -218,4 +287,3 @@ class CustomerTransactionController extends Controller
     //     $customer->balance += $amount;
     //     $customer->save();
     // }
-}

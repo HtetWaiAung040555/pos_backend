@@ -112,6 +112,7 @@ Route::middleware(['auth:sanctum'])->group(function () {
 
     Route::apiResource('/payment_methods', PaymentMethodController::class);
 
+    Route::post('/customers_transactions/sync_to_cloud', [CustomerTransactionController::class, 'syncToCloud']);
     Route::apiResource('/customers_transactions', CustomerTransactionController::class);
 
     Route::apiResource('/pricechanges', PriceChangesController::class);

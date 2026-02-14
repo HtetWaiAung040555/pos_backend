@@ -210,6 +210,8 @@ class SaleController extends Controller
                     'payment_id' => $sale->payment_id,
                     'status_id' => 7,
                     'pay_date' => $sale->sale_date,
+                    'is_synced' => true,
+                    'synced_at' => $sale->sale_date,
                     'created_by' => $sale->updated_by,
                     'updated_by' => $sale->updated_by
                 ]);
@@ -655,6 +657,8 @@ class SaleController extends Controller
                     'payment_id' => $sale->payment_id,
                     'status_id' => 7,
                     'pay_date' => $sale->sale_date,
+                    'is_synced' => true,
+                    'synced_at' => $sale->sale_date,
                     'created_by' => $sale->updated_by,
                     'updated_by' => $sale->updated_by
                 ]);
@@ -710,6 +714,8 @@ class SaleController extends Controller
                     'payment_id' => $sale->payment_id,
                     'status_id' => 7,
                     'pay_date' => now(),
+                    'is_synced' => true,
+                    'synced_at' => $sale->sale_date,
                     'created_by' => $request->void_by,
                     'updated_by' => $request->void_by
                 ]);
