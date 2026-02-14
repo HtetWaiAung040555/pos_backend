@@ -20,6 +20,8 @@ class CustomerTransaction extends Model
         'status_id',
         'remark',
         'pay_date',
+        'is_synced',
+        'synced_at',
         'created_by',
         'updated_by',
     ];
