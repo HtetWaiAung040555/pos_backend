@@ -135,12 +135,12 @@ class SaleController extends Controller
                         'sale_id' => $sale->id,
                         'inventory_id' => $inventory->id,
                         'product_id' => $product->id,
-                        'quantity' => $item['quantity'],
+                        'quantity' => $deductQty,
                         'price' => $item['price'],
                         'discount_amount' => $item['discount_amount'] ?? 0,
                         'discount_price' => $item['discount_price'] ?? 0,
                         'promotion_id' => $item['promotion_id'] ?? null,
-                        'total' => $finalPrice * $item['quantity']
+                        'total' => $finalPrice * $deductQty
                     ]);
 
                     StockTransaction::create([
@@ -180,12 +180,12 @@ class SaleController extends Controller
                         'sale_id' => $sale->id,
                         'inventory_id' => $negativeInventory->id,
                         'product_id' => $product->id,
-                        'quantity' => $item['quantity'],
+                        'quantity' => $remainingQty,
                         'price' => $item['price'],
                         'discount_amount' => $item['discount_amount'] ?? 0,
                         'discount_price' => $item['discount_price'] ?? 0,
                         'promotion_id' => $item['promotion_id'] ?? null,
-                        'total' => $finalPrice * $item['quantity']
+                        'total' => $finalPrice * $remainingQty
                     ]);
 
                     StockTransaction::create([
@@ -518,24 +518,24 @@ class SaleController extends Controller
 
                         if ($saleDetail) {
                             $saleDetail->update([
-                                'quantity' => $item['quantity'],
+                                'quantity' => $deductQty,
                                 'price' => $item['price'],
                                 'discount_amount' => $item['discount_amount'] ?? 0,
                                 'discount_price' => $item['discount_price'] ?? 0,
                                 'promotion_id' => $item['promotion_id'] ?? null,
-                                'total' => $finalPrice * $item['quantity']
+                                'total' => $finalPrice * $deductQty
                             ]);
                         } else {
                             SaleDetail::create([
                                 'sale_id' => $sale->id,
                                 'inventory_id' => $inventory->id,
                                 'product_id' => $product->id,
-                                'quantity' => $item['quantity'],
+                                'quantity' => $deductQty,
                                 'price' => $item['price'],
                                 'discount_amount' => $item['discount_amount'] ?? 0,
                                 'discount_price' => $item['discount_price'] ?? 0,
                                 'promotion_id' => $item['promotion_id'] ?? null,
-                                'total' => $finalPrice * $item['quantity']
+                                'total' => $finalPrice * $deductQty
                             ]);
                         }
 
@@ -578,24 +578,24 @@ class SaleController extends Controller
 
                         if ($saleDetail) {
                             $saleDetail->update([
-                                'quantity' => $item['quantity'],
+                                'quantity' => $remainingQty,
                                 'price' => $item['price'],
                                 'discount_amount' => $item['discount_amount'] ?? 0,
                                 'discount_price' => $item['discount_price'] ?? 0,
                                 'promotion_id' => $item['promotion_id'] ?? null,
-                                'total' => $finalPrice * $item['quantity']
+                                'total' => $finalPrice * $remainingQty
                             ]);
                         } else {
                             SaleDetail::create([
                                 'sale_id' => $sale->id,
                                 'inventory_id' => $inventory->id,
                                 'product_id' => $product->id,
-                                'quantity' => $item['quantity'],
+                                'quantity' => $remainingQty,
                                 'price' => $item['price'],
                                 'discount_amount' => $item['discount_amount'] ?? 0,
                                 'discount_price' => $item['discount_price'] ?? 0,
                                 'promotion_id' => $item['promotion_id'] ?? null,
-                                'total' => $finalPrice * $item['quantity']
+                                'total' => $finalPrice * $remainingQty
                             ]);
                         }
 
