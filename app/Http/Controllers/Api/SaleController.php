@@ -133,12 +133,12 @@ class SaleController extends Controller
                         'sale_id' => $sale->id,
                         'inventory_id' => $inventory->id,
                         'product_id' => $product->id,
-                        'quantity' => $item['quantity'],
+                        'quantity' => $deductQty,
                         'price' => $item['price'],
                         'discount_amount' => $item['discount_amount'] ?? 0,
                         'discount_price' => $item['discount_price'] ?? 0,
                         'promotion_id' => $item['promotion_id'] ?? null,
-                        'total' => $finalPrice * $item['quantity']
+                        'total' => $finalPrice * $deductQty
                     ]);
 
                     StockTransaction::create([
@@ -178,12 +178,12 @@ class SaleController extends Controller
                         'sale_id' => $sale->id,
                         'inventory_id' => $negativeInventory->id,
                         'product_id' => $product->id,
-                        'quantity' => $item['quantity'],
+                        'quantity' => $remainingQty,
                         'price' => $item['price'],
                         'discount_amount' => $item['discount_amount'] ?? 0,
                         'discount_price' => $item['discount_price'] ?? 0,
                         'promotion_id' => $item['promotion_id'] ?? null,
-                        'total' => $finalPrice * $item['quantity']
+                        'total' => $finalPrice * $remainingQty
                     ]);
 
                     StockTransaction::create([
@@ -232,184 +232,240 @@ class SaleController extends Controller
 
     // public function store(Request $request)
     // {
-
     //     $request->validate([
     //         'customer_id' => 'required|exists:customers,id',
-    //         'payment_id' => 'required|exists:payment_methods,id',
+    //         'payment_id'  => 'required|exists:payment_methods,id',
     //         'paid_amount' => 'nullable|numeric|min:0',
-    //         'status_id' => 'required|exists:statuses,id',
-    //         'remark' => 'nullable|string|max:1000',
-    //         'created_by' => 'required|exists:users,id',
-    //         'updated_by' => 'nullable|exists:users,id',
-    //         'sale_date' => 'nullable|date',
-    //         'warehouse_id' => 'required|exists:warehouses,id',
-    //         'products' => 'required|array|min:1',
+    //         'status_id'   => 'required|exists:statuses,id',
+    //         'remark'      => 'nullable|string|max:1000',
+    //         'created_by'  => 'required|exists:users,id',
+    //         'updated_by'  => 'nullable|exists:users,id',
+    //         'sale_date'   => 'nullable|date',
+    //         'warehouse_id'=> 'required|exists:warehouses,id',
+    //         'products'    => 'required|array|min:1',
     //         'products.*.product_id' => 'required|exists:products,id',
-    //         'products.*.quantity' => 'required|integer|min:1'
+    //         'products.*.quantity'   => 'required|integer|min:1'
     //     ]);
 
     //     DB::beginTransaction();
+
     //     try {
-    //         // 1. Calculate total amount
+
+    //         $saleDate   = $request->sale_date ?? now();
+    //         $createdBy  = $request->created_by;
+    //         $updatedBy  = $request->updated_by ?? $createdBy;
+    //         $warehouseId = $request->warehouse_id;
+
+    //         /* ==========================================================
+    //         Load All Products At Once (No N+1)
+    //         ========================================================== */
+
+    //         $productIds = collect($request->products)
+    //             ->pluck('product_id')
+    //             ->unique();
+
+    //         $products = Product::whereIn('id', $productIds)
+    //             ->get()
+    //             ->keyBy('id');
+
+    //         /* ==========================================================
+    //         Calculate Total
+    //         ========================================================== */
+
     //         $totalAmount = 0;
+
     //         foreach ($request->products as $item) {
-    //             $product = Product::findOrFail($item['product_id']);
-    //             $totalAmount += ($item['promotion_id']? $item['discount_price'] : $item['price']) * $item['quantity'];
+
+    //             $price = !empty($item['promotion_id'])
+    //                 ? ($item['discount_price'] ?? ($item['price'] - ($item['discount_amount'] ?? 0)))
+    //                 : $item['price'];
+
+    //             $totalAmount += $price * $item['quantity'];
     //         }
 
-    //         // 2. Calculate change (due_amount)
     //         $paidAmount = $request->paid_amount ?? 0;
-    //         $dueAmount = $paidAmount - $totalAmount; // change amount
+    //         $dueAmount  = max($paidAmount - $totalAmount, 0);
 
-    //         if ($dueAmount < 0) $dueAmount = 0; // avoid negative change
+    //         /* ==========================================================
+    //         Create Sale
+    //         ========================================================== */
 
-    //         // 3. Create Sale
     //         $sale = Sale::create([
-    //             'warehouse_id' => $request->warehouse_id,
+    //             'warehouse_id' => $warehouseId,
     //             'customer_id' => $request->customer_id,
     //             'total_amount' => $totalAmount,
     //             'paid_amount' => $paidAmount,
     //             'due_amount' => $dueAmount,
     //             'payment_id' => $request->payment_id,
     //             'status_id' => $request->status_id,
-    //             'remark' => $request->remark ?? null,
-    //             'sale_date' => $request->sale_date ?? now(),
-    //             'created_by' => $request->created_by,
-    //             'updated_by' => $request->updated_by ?? $request->created_by
+    //             'remark' => $request->remark,
+    //             'sale_date' => $saleDate,
+    //             'created_by' => $createdBy,
+    //             'updated_by' => $updatedBy,
+    //             'is_synced' => true,
+    //             'sync_at' => now(),
     //         ]);
 
-    //         // 4. Create Sale Details and Stock Transactions
+    //         /* ==========================================================
+    //         Deduct Inventory (FIFO + Negative Stock)
+    //         ========================================================== */
+
+    //         $saleDetails       = [];
+    //         $stockTransactions = [];
+
     //         foreach ($request->products as $item) {
-    //             $product = Product::findOrFail($item['product_id']);
-    //             $finalPrice = $item['price'];
 
-    //             if (!empty($item['promotion_id'])) {
-    //                 $finalPrice = $item['price'] - $item['discount_amount'];
-    //             }
-
+    //             $product = $products[$item['product_id']];
     //             $remainingQty = $item['quantity'];
 
-    //             // 1. Get available stock (expiry first, non-expiry later)
+    //             $price = !empty($item['promotion_id'])
+    //                 ? ($item['discount_price'] ?? ($item['price'] - ($item['discount_amount'] ?? 0)))
+    //                 : $item['price'];
+
+    //             // FIFO inventories
     //             $inventories = Inventory::where('product_id', $product->id)
-    //                 ->where('warehouse_id', $request->warehouse_id)
+    //                 ->where('warehouse_id', $warehouseId)
     //                 ->where('qty', '>', 0)
-    //                 ->orderByRaw('expired_date IS NULL') // expiry first
+    //                 ->orderByRaw('expired_date IS NULL')
     //                 ->orderBy('expired_date')
     //                 ->orderBy('created_at')
     //                 ->lockForUpdate()
     //                 ->get();
 
-    //             // 2. Deduct from available inventory
     //             foreach ($inventories as $inventory) {
-    //                 if ($remainingQty <= 0) {
-    //                     break;
-    //                 }
+
+    //                 if ($remainingQty <= 0) break;
 
     //                 $deductQty = min($remainingQty, $inventory->qty);
 
-    //                 $inventory->qty -= $deductQty;
-    //                 $inventory->updated_by = $request->created_by;
-    //                 $inventory->save();
+    //                 $inventory->decrement('qty', $deductQty);
 
-    //                 SaleDetail::create([
+    //                 $saleDetails[] = [
     //                     'sale_id' => $sale->id,
     //                     'inventory_id' => $inventory->id,
     //                     'product_id' => $product->id,
-    //                     'quantity' => $item['quantity'],
+    //                     'quantity' => $deductQty,
     //                     'price' => $item['price'],
     //                     'discount_amount' => $item['discount_amount'] ?? 0,
     //                     'discount_price' => $item['discount_price'] ?? 0,
     //                     'promotion_id' => $item['promotion_id'] ?? null,
-    //                     'total' => $finalPrice * $item['quantity']
-    //                 ]);
+    //                     'total' => $price * $deductQty,
+    //                     'created_at' => now(),
+    //                     'updated_at' => now()
+    //                 ];
 
-    //                 StockTransaction::create([
-    //                     'inventory_id'    => $inventory->id,
-    //                     'reference_id'    => $sale->id,
-    //                     'reference_type'  => 'sale',
-    //                     'reference_date' => $request->sale_date ?? now(),
+    //                 $stockTransactions[] = [
+    //                     'inventory_id' => $inventory->id,
+    //                     'reference_id' => $sale->id,
+    //                     'reference_type' => 'sale',
+    //                     'reference_date' => $saleDate,
     //                     'quantity_change' => $deductQty,
-    //                     'type'            => 'out',
-    //                     'created_by'      => $request->created_by,
-    //                     'updated_by'      => $request->updated_by ?? $request->created_by
-    //                 ]);
+    //                     'type' => 'out',
+    //                     'created_by' => $createdBy,
+    //                     'created_at' => now(),
+    //                     'updated_at' => now()
+    //                 ];
 
     //                 $remainingQty -= $deductQty;
     //             }
 
-    //             // 3. If still remaining → create or update negative stock
+    //             /* =============================
+    //             Negative Stock (Controlled)
+    //             ==============================*/
+
     //             if ($remainingQty > 0) {
+
     //                 $negativeInventory = Inventory::firstOrCreate(
     //                     [
-    //                         'product_id'   => $product->id,
-    //                         'warehouse_id' => $request->warehouse_id,
-    //                         'expired_date'  => null,
+    //                         'product_id' => $product->id,
+    //                         'warehouse_id' => $warehouseId,
+    //                         'expired_date' => null
     //                     ],
     //                     [
-    //                         'qty'         => 0,
-    //                         'created_by'  => $request->created_by,
-    //                         'updated_by'  => $request->updated_by ?? $request->created_by
+    //                         'qty' => 0,
+    //                         'created_by' => $createdBy,
+    //                         'updated_by' => $updatedBy
     //                     ]
     //                 );
 
-    //                 $negativeInventory->qty -= $remainingQty;
-    //                 $negativeInventory->updated_by = $request->created_by;
-    //                 $negativeInventory->save();
+    //                 $negativeInventory->decrement('qty', $remainingQty);
 
-    //                 SaleDetail::create([
+    //                 $saleDetails[] = [
     //                     'sale_id' => $sale->id,
     //                     'inventory_id' => $negativeInventory->id,
     //                     'product_id' => $product->id,
-    //                     'quantity' => $item['quantity'],
+    //                     'quantity' => $remainingQty,
     //                     'price' => $item['price'],
     //                     'discount_amount' => $item['discount_amount'] ?? 0,
     //                     'discount_price' => $item['discount_price'] ?? 0,
     //                     'promotion_id' => $item['promotion_id'] ?? null,
-    //                     'total' => $finalPrice * $item['quantity']
-    //                 ]);
+    //                     'total' => $price * $remainingQty,
+    //                     'created_at' => now(),
+    //                     'updated_at' => now()
+    //                 ];
 
-    //                 StockTransaction::create([
-    //                     'inventory_id'    => $negativeInventory->id,
-    //                     'reference_id'    => $sale->id,
-    //                     'reference_type'  => 'sale',
-    //                     'reference_date' => $request->sale_date ?? now(),
+    //                 $stockTransactions[] = [
+    //                     'inventory_id' => $negativeInventory->id,
+    //                     'reference_id' => $sale->id,
+    //                     'reference_type' => 'sale',
+    //                     'reference_date' => $saleDate,
     //                     'quantity_change' => $remainingQty,
-    //                     'type'            => 'out',
-    //                     'created_by'      => $request->created_by
-    //                 ]);
+    //                     'type' => 'out',
+    //                     'created_by' => $createdBy,
+    //                     'updated_at' => now(),
+    //                     'created_at' => now()
+    //                 ];
     //             }
+    //         }
 
+    //         SaleDetail::insert($saleDetails);
+    //         StockTransaction::insert($stockTransactions);
 
-    //             // $inventory = Inventory::firstOrCreate(
-    //             //     [
-    //             //         'product_id' => $product->id, 
-    //             //         'warehouse_id' => $request->warehouse_id,
-    //             //         'qty' => 0,
-    //             //         'name' => $product->name,
-    //             //         'created_by' => $request->created_by,
-    //             //         'updated_by' => $request->updated_by ?? $request->created_by, 
-    //             //     ]
-    //             // );
+    //         /* ==========================================================
+    //         Customer Ledger (Only Completed Sales)
+    //         ========================================================== */
 
-    //             // $inventory->decrement('qty', $item['quantity']);
+    //         if ($request->status_id == 7) {
 
-    //             // StockTransaction::create([
-    //             //     'inventory_id' => $inventory->id,
-    //             //     'reference_id' => $sale->id,
-    //             //     'reference_type' => 'sale',
-    //             //     'quantity_change' => -$item['quantity'],
-    //             //     'type' => 'out',
-    //             //     'created_by' => $request->created_by,
-    //             //     'updated_by' => $request->updated_by ?? $request->created_by,
-    //             // ]);
+    //             CustomerTransaction::create([
+    //                 'customer_id' => $sale->customer_id,
+    //                 'sale_id' => $sale->id,
+    //                 'type' => 'sale',
+    //                 'amount' => -$sale->total_amount,
+    //                 'payment_id' => $sale->payment_id,
+    //                 'status_id' => 7,
+    //                 'pay_date' => $sale->sale_date,
+    //                 'created_by' => $updatedBy,
+    //                 'updated_by' => $updatedBy
+    //             ]);
+
+    //             if (in_array($sale->payment_id, [2,3])) {
+    //                 $sale->customer()->lockForUpdate()->decrement('balance', $sale->total_amount);
+    //             }
     //         }
 
     //         DB::commit();
-    //         return new SaleResource($sale->fresh(['warehouse','customer', 'status', 'paymentMethod', 'details.product', 'createdBy', 'updatedBy']));
 
-    //     } catch (\Exception $e) {
+    //         return new SaleResource(
+    //             $sale->fresh([
+    //                 'warehouse',
+    //                 'customer',
+    //                 'status',
+    //                 'paymentMethod',
+    //                 'details.product',
+    //                 'createdBy',
+    //                 'updatedBy'
+    //             ])
+    //         );
+
+    //     } catch (\Throwable $e) {
+
     //         DB::rollBack();
-    //         return response()->json(['error' => 'Failed to create sale', 'details' => $e->getMessage()], 500);
+
+    //         return response()->json([
+    //             'error'   => 'Failed to create sale',
+    //             'details' => $e->getMessage()
+    //         ], 500);
     //     }
     // }
 
@@ -514,24 +570,24 @@ class SaleController extends Controller
 
                         if ($saleDetail) {
                             $saleDetail->update([
-                                'quantity' => $item['quantity'],
+                                'quantity' => $deductQty,
                                 'price' => $item['price'],
                                 'discount_amount' => $item['discount_amount'] ?? 0,
                                 'discount_price' => $item['discount_price'] ?? 0,
                                 'promotion_id' => $item['promotion_id'] ?? null,
-                                'total' => $finalPrice * $item['quantity']
+                                'total' => $finalPrice * $deductQty
                             ]);
                         } else {
                             SaleDetail::create([
                                 'sale_id' => $sale->id,
                                 'inventory_id' => $inventory->id,
                                 'product_id' => $product->id,
-                                'quantity' => $item['quantity'],
+                                'quantity' => $deductQty,
                                 'price' => $item['price'],
                                 'discount_amount' => $item['discount_amount'] ?? 0,
                                 'discount_price' => $item['discount_price'] ?? 0,
                                 'promotion_id' => $item['promotion_id'] ?? null,
-                                'total' => $finalPrice * $item['quantity']
+                                'total' => $finalPrice * $deductQty
                             ]);
                         }
 
@@ -574,24 +630,24 @@ class SaleController extends Controller
 
                         if ($saleDetail) {
                             $saleDetail->update([
-                                'quantity' => $item['quantity'],
+                                'quantity' => $remainingQty,
                                 'price' => $item['price'],
                                 'discount_amount' => $item['discount_amount'] ?? 0,
                                 'discount_price' => $item['discount_price'] ?? 0,
                                 'promotion_id' => $item['promotion_id'] ?? null,
-                                'total' => $finalPrice * $item['quantity']
+                                'total' => $finalPrice * $remainingQty
                             ]);
                         } else {
                             SaleDetail::create([
                                 'sale_id' => $sale->id,
                                 'inventory_id' => $inventory->id,
                                 'product_id' => $product->id,
-                                'quantity' => $item['quantity'],
+                                'quantity' => $remainingQty,
                                 'price' => $item['price'],
                                 'discount_amount' => $item['discount_amount'] ?? 0,
                                 'discount_price' => $item['discount_price'] ?? 0,
                                 'promotion_id' => $item['promotion_id'] ?? null,
-                                'total' => $finalPrice * $item['quantity']
+                                'total' => $finalPrice * $remainingQty
                             ]);
                         }
 
