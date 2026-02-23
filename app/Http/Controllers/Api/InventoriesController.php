@@ -239,6 +239,7 @@ class InventoriesController extends Controller
             'inventory_id' => 'required|exists:inventories,id',
             'qty'          => 'required|integer|not_in:0',
             'reason'       => 'nullable|string|max:255',
+            'adjust_date' => 'nullable|date',
             'created_by'   => 'required|exists:users,id'
         ]);
 
@@ -256,7 +257,7 @@ class InventoriesController extends Controller
                 'inventory_id'    => $inventory->id,
                 'reference_id'    => null,
                 'reference_type'  => 'adjustment',
-                'reference_date' => now(),
+                'reference_date' => $request->adjust_date ?? now(),
                 'quantity_change' => $request->qty,
                 'reason'          => $request->reason,
                 'type'            => $request->qty > 0 ? 'in' : 'out',
