@@ -250,7 +250,11 @@ class InventoriesController extends Controller
             $inventory = Inventory::lockForUpdate()->findOrFail($request->inventory_id);
 
             // Adjust qty (can go negative)
-            $inventory->qty += $request->qty;
+            if ($request->type === 'in') {
+                $inventory->qty += abs($request->qty);
+            } else {
+                $inventory->qty -= abs($request->qty);
+            }
             $inventory->updated_by = $request->created_by;
             $inventory->save();
 
