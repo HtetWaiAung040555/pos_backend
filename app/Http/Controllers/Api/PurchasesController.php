@@ -70,7 +70,6 @@ class PurchasesController extends Controller
             'products.*.expired_date' => 'nullable|date',
         ]);
 
-        Log::info("request :", $request->all());
         DB::beginTransaction();
         try {
             // Calculate total
@@ -94,7 +93,6 @@ class PurchasesController extends Controller
                 $totalAmount += $price * $item['quantity'];
             }
 
-
             // Create Purchase
             $purchase = Purchase::create([
                 'warehouse_id' => $request->warehouse_id,
@@ -107,49 +105,6 @@ class PurchasesController extends Controller
                 'created_by' => $request->created_by,
                 'updated_by' => $request->created_by,
             ]);
-
-            // Stock IN + details
-            // foreach ($request->products as $item) {
-
-            //     $product = Product::findOrFail($item['product_id']);
-            //     $price = $product->purchase_price;
-            
-            //     $inventory = Inventory::firstOrCreate(
-            //         [
-            //             'product_id' => $item['product_id'],
-            //             'warehouse_id' => $request->warehouse_id,
-            //             'expired_date' => $item['expired_date'] ?? null,
-            //         ],
-            //         [
-            //             'qty' => 0,
-            //             'created_by' => $request->created_by,
-            //             'updated_by' => $request->created_by,
-            //         ]
-            //     );
-            
-            //     $inventory->qty += $item['quantity'];
-            //     $inventory->updated_by = $request->created_by;
-            //     $inventory->save();
-            
-            //     PurchaseDetail::create([
-            //         'purchase_id' => $purchase->id,
-            //         'inventory_id' => $inventory->id,
-            //         'product_id' => $item['product_id'],
-            //         'quantity' => $item['quantity'],
-            //         'price' => $price,
-            //         'total' => $price * $item['quantity'],
-            //     ]);
-            
-            //     StockTransaction::create([
-            //         'inventory_id'    => $inventory->id,
-            //         'reference_id'    => $purchase->id,
-            //         'reference_type'  => 'purchase',
-            //         'quantity_change' => $item['quantity'],
-            //         'type'            => 'in',
-            //         'created_by'      => $request->created_by,
-            //         'updated_by'      => $request->created_by,
-            //     ]);
-            // }
 
             foreach ($request->products as $item) {
 
@@ -281,53 +236,6 @@ class PurchasesController extends Controller
         return new PurchaseResource($purchase);
     }
 
-    // public function update(Request $request, string $id)
-    // {
-    //     $request->validate([
-    //         'payment_id' => 'sometimes|required|exists:payment_methods,id',
-    //         'status_id' => 'sometimes|required|exists:statuses,id',
-    //         'remark' => 'nullable|string|max:1000',
-    //         'purchase_date' => 'sometimes|date',
-    //         'updated_by' => 'required|exists:users,id'
-    //     ]);
-
-    //     $purchase = Purchase::findOrFail($id);
-
-    //     DB::beginTransaction();
-    //     try {
-
-    //         $purchase->update([
-    //             'payment_id'    => $request->payment_id,
-    //             'status_id'     => $request->status_id,
-    //             'remark'        => $request->remark,
-    //             'purchase_date' => $request->purchase_date,
-    //             'updated_by'    => $request->updated_by,
-    //         ]);
-
-    //         DB::commit();
-
-    //         return new PurchaseResource(
-    //             $purchase->fresh([
-    //                 'supplier',
-    //                 'warehouse',
-    //                 'status',
-    //                 'paymentMethod',
-    //                 'details.product',
-    //                 'createdBy',
-    //                 'updatedBy'
-    //             ])
-    //         );
-
-    //     } catch (\Exception $e) {
-    //         DB::rollBack();
-
-    //         return response()->json([
-    //             'error' => 'Failed to update purchase',
-    //             'details' => $e->getMessage()
-    //         ], 500);
-    //     }
-    // }
-
     public function update(Request $request, string $id)
     {
         $request->validate([
@@ -336,45 +244,42 @@ class PurchasesController extends Controller
             'remark' => 'nullable|string|max:1000',
             'purchase_date' => 'sometimes|date',
             'updated_by' => 'required|exists:users,id',
-            'products' => 'sometimes|array|min:1',
-            'products.*.product_id' => 'required|exists:products,id',
-            'products.*.quantity' => 'required|integer|min:1',
-            'products.*.purchase_price' => 'nullable|numeric|min:0',
-            'products.*.expired_date' => 'nullable|date',
         ]);
+
+        Log::info("Update request :", $request->all());
 
         $purchase = Purchase::findOrFail($id);
 
         DB::beginTransaction();
+
         try {
+
             $totalAmount = 0;
-            foreach ($purchase->details as $detail) {
-                $inventory = Inventory::lockForUpdate()->find($detail->inventory_id);
-
-                if (!$inventory) {
-                    throw new \Exception("Inventory not found for rollback");
-                }
-
-                $inventory->qty -= $detail->quantity;
-                $inventory->updated_by = $request->updated_by;
-                $inventory->save();
-
-                StockTransaction::create([
-                    "inventory_id" => $inventory->id,
-                    "reference_id" => $purchase->id,
-                    "reference_type" => "purchase_update",
-                    'reference_date' => $request->purchase_date ?? $purchase->purchase_date,
-                    "quantity_change" => $detail->quantity,
-                    "type" => "out",
-                    "created_by" => $request->updated_by,
-                ]);
-            }
-
-            PurchaseDetail::where("purchase_id", $purchase->id)->delete();
 
             // Update inventory and optionally update purchase_price
-            if ($request->has('products')) {
+            if ($request->products) {
+
+                foreach ($purchase->details as $detail) {
+
+                    $inventory = Inventory::lockForUpdate()->find($detail->inventory_id);
+
+                    if (!$inventory) {
+                        throw new \Exception("Inventory not found for rollback");
+                    }
+
+                    $inventory->qty -= $detail->quantity;
+                    $inventory->updated_by = $request->updated_by;
+                    $inventory->save();
+
+                }
+
+                PurchaseDetail::where("purchase_id", $purchase->id)->delete();
+
+                StockTransaction::where('reference_id', $purchase->id)
+                    ->delete();
+
                 foreach ($request->products as $item) {
+
                     $product = Product::findOrFail($item['product_id']);
 
                     // Update purchase_price if >0
@@ -384,36 +289,86 @@ class PurchasesController extends Controller
                         $product->save();
                     }
 
-                    $inventory = Inventory::lockForUpdate()->find($item['inventory_id']);
+                    $remainingQty = $item['quantity'];
 
-                    // Add quantity to inventory
-                    $inventory->qty += $item['quantity'];
-                    $inventory->expired_date = $item['expired_date'];
-                    $inventory->updated_by = $request->updated_by;
-                    $inventory->save();
+                    $inventories = Inventory::where('product_id', $item['product_id'])
+                    ->where('warehouse_id', $purchase->warehouse_id)
+                    ->lockForUpdate()
+                    ->get();
 
+                    /* Offset negative inventories first */
+                    foreach ($inventories->where('qty', '<', 0)->sortBy('created_at') as $negInv) {
+
+                        if ($remainingQty <= 0) break;
+
+                        $offsetQty = min(abs($negInv->qty), $remainingQty);
+
+                        $negInv->increment('qty', $offsetQty);
+                        $negInv->update(['updated_by' => $request->updated_by]);
+
+                        StockTransaction::create([
+                            'inventory_id'    => $negInv->id,
+                            'reference_id'    => $purchase->id,
+                            'reference_type'  => 'purchase',
+                            'reference_date'  => $purchase->purchase_date,
+                            'quantity_change' => $offsetQty,
+                            'type'            => 'in',
+                            'created_by'      => $request->updated_by,
+                        ]);
+
+                        $remainingQty -= $offsetQty;
+                    }
+
+                    /* Add remaining stock to correct inventory */
+                    $inventory = null;
+
+                    if ($remainingQty > 0) {
+
+                        $inventory = $inventories
+                            ->where('expired_date', $item['expired_date'] ?? null)
+                            ->first();
+
+                        if ($inventory) {
+
+                            $inventory->increment('qty', $remainingQty);
+                            $inventory->update(['updated_by' => $request->updated_by]);
+
+                        } else {
+
+                            $inventory = Inventory::create([
+                                'product_id'   => $item['product_id'],
+                                'warehouse_id' => $purchase->warehouse_id,
+                                'expired_date' => $item['expired_date'] ?? null,
+                                'qty'          => $remainingQty,
+                                'created_by'   => $request->updated_by,
+                                'updated_by'   => $request->updated_by,
+                            ]);
+                        }
+
+                        StockTransaction::create([
+                            'inventory_id'    => $inventory->id,
+                            'reference_id'    => $purchase->id,
+                            'reference_type'  => 'purchase',
+                            'reference_date'  => $purchase->purchase_date,
+                            'quantity_change' => $remainingQty,
+                            'type'            => 'in',
+                            'created_by'      => $request->updated_by,
+                        ]);
+                    }
+
+                    /* Store Purchase Detail */
                     PurchaseDetail::create([
                         'purchase_id' => $purchase->id,
-                        'inventory_id' => $inventory->id,
+                        'inventory_id' => $inventory?->id ?? null,
                         'product_id' => $item['product_id'],
                         'quantity' => $item['quantity'],
-                        'price' => $item['purchase_price'],
-                        'total' => $item['purchase_price'] * $item['quantity'],
+                        'price' => $product->purchase_price,
+                        'total' => $product->purchase_price * $item['quantity'],
                     ]);
-
-                    // Record stock transaction
-                    StockTransaction::create([
-                        'inventory_id'    => $inventory->id,
-                        'reference_id'    => $purchase->id,
-                        'reference_type'  => 'purchase_update',
-                        'reference_date' => $request->purchase_date ?? $purchase->purchase_date,
-                        'quantity_change' => $item['quantity'],
-                        'type'            => 'in',
-                        'created_by'      => $request->updated_by,
-                        'updated_by'      => $request->updated_by,
-                    ]);
-                    $totalAmount += $item['purchase_price'] * $item['quantity'];
+                    $totalAmount += $product->purchase_price * $item['quantity'];
                 }
+            } else {
+                $totalAmount = $purchase->total_amount;
             }
 
             // Update purchase header
@@ -449,7 +404,6 @@ class PurchasesController extends Controller
             ], 500);
         }
     }
-
 
     public function destroy(Request $request, string $id)
     {
