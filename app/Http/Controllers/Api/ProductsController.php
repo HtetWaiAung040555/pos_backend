@@ -145,6 +145,19 @@ class ProductsController extends Controller
         }
     }
 
+    public function lastCustomBarcode(Request $request)
+    {
+        $prefix = $request->get('prefix', 'KBAM');
+        $like = $prefix . '-%';
+
+        $barcode = Product::whereNotNull('barcode')
+            ->where('barcode', 'like', $like)
+            ->orderByRaw("CAST(SUBSTRING_INDEX(barcode, '-', -1) AS UNSIGNED) DESC")
+            ->value('barcode');
+
+        return response()->json(['barcode' => $barcode], 200);
+    }
+
     public function saleproducts(Request $request){
         $warehouseId = $request->warehouse_id;
 

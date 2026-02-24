@@ -78,6 +78,7 @@ Route::middleware(['auth:sanctum'])->group(function () {
     Route::apiResource('/categories', CategoriesController::class);
 
     Route::get('/products/saleproducts', [ProductsController::class, 'saleproducts']);
+    Route::get('/products/last-custom-barcode', [ProductsController::class, 'lastCustomBarcode']);
     Route::apiResource('/products', ProductsController::class);
     // Route::get('/products', [ProductsController::class, 'index']);
     // Route::get('/products/{id}', [ProductsController::class, 'show']);
