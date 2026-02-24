@@ -87,6 +87,7 @@ Route::middleware(['auth:sanctum'])->group(function () {
     // Route::delete('/products/{id}', [ProductsController::class, 'destroy']);
 
     Route::get('/stock_transactions', [StockTransactionController::class, 'index']);
+    Route::delete('/stock_transactions/{id}', [StockTransactionController::class, 'destroy']);
 
     // Route::get('/inventories/saleproducts', [InventoriesController::class, 'saleproducts']);
     Route::post('/inventories/adjust', [InventoriesController::class, 'adjust']);

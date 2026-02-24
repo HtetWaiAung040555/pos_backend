@@ -7,6 +7,7 @@ use App\Http\Resources\StockTransactionResource;
 use App\Models\StockTransaction;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\DB;
 
 class StockTransactionController extends Controller
 {
@@ -69,6 +70,37 @@ class StockTransactionController extends Controller
 
     public function destroy(string $id)
     {
-        //
+        $transaction = StockTransaction::findOrFail($id);
+
+        Log::info("Deleting stock transaction ID: {$transaction->id}, Type: {$transaction->type}, Inventory ID: {$transaction->inventory_id}, Quantity Change: {$transaction->quantity_change}");
+
+        DB::beginTransaction();
+        try {
+            $inventory = $transaction->inventory;
+            Log::info("Associated inventory before deletion: ID: {$inventory->id}, Product ID: {$inventory->product_id}, Current Qty: {$inventory->qty}");
+            if ($inventory) {
+                $change = (float) ($transaction->quantity_change ?? 0);
+
+                if ($transaction->type === 'in') {
+                    // reverse an "in" transaction by decreasing inventory
+                    $inventory->qty = max(0, $inventory->qty - $change);
+                } elseif ($transaction->type === 'out') {
+                    // reverse an "out" transaction by increasing inventory
+                    $inventory->qty = $inventory->qty + $change;
+                }
+
+                $inventory->save();
+            }
+
+            $transaction->delete();
+
+            DB::commit();
+
+            return response()->json(['message' => 'Deleted Successfully'], 200);
+        } catch (\Exception $e) {
+            DB::rollBack();
+            Log::error('Error deleting stock transaction: ' . $e->getMessage());
+            return response()->json(['error' => 'Transaction could not be deleted'], 400);
+        }
     }
 }
