@@ -246,8 +246,6 @@ class PurchasesController extends Controller
             'updated_by' => 'required|exists:users,id',
         ]);
 
-        Log::info("Update request :", $request->all());
-
         $purchase = Purchase::findOrFail($id);
 
         DB::beginTransaction();
@@ -310,7 +308,7 @@ class PurchasesController extends Controller
                             'inventory_id'    => $negInv->id,
                             'reference_id'    => $purchase->id,
                             'reference_type'  => 'purchase',
-                            'reference_date'  => $purchase->purchase_date,
+                            'reference_date'  => $request->purchase_date ?? $purchase->purchase_date,
                             'quantity_change' => $offsetQty,
                             'type'            => 'in',
                             'created_by'      => $request->updated_by,
@@ -349,7 +347,7 @@ class PurchasesController extends Controller
                             'inventory_id'    => $inventory->id,
                             'reference_id'    => $purchase->id,
                             'reference_type'  => 'purchase',
-                            'reference_date'  => $purchase->purchase_date,
+                            'reference_date'  => $request->purchase_date ?? $purchase->purchase_date,
                             'quantity_change' => $remainingQty,
                             'type'            => 'in',
                             'created_by'      => $request->updated_by,
@@ -359,7 +357,7 @@ class PurchasesController extends Controller
                     /* Store Purchase Detail */
                     PurchaseDetail::create([
                         'purchase_id' => $purchase->id,
-                        'inventory_id' => $inventory?->id ?? null,
+                        'inventory_id' => $inventory?->id ?? $negInv?->id ?? null,
                         'product_id' => $item['product_id'],
                         'quantity' => $item['quantity'],
                         'price' => $product->purchase_price,
