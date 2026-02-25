@@ -6,7 +6,7 @@ use App\Http\Resources\Concerns\FormatsLocalDateTime;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
-class CustomerTransactionResource extends JsonResource
+class WalletTopUpResource extends JsonResource
 {
     use FormatsLocalDateTime;
 
@@ -15,8 +15,6 @@ class CustomerTransactionResource extends JsonResource
         return [
             'id'          => $this->id,
             'customer_id' => $this->customer_id,
-            'reference_id'     => $this->reference_id,
-            'type'        => $this->type,
             'amount'      => $this->amount,
 
             'payment_method' => $this->paymentMethod ? [

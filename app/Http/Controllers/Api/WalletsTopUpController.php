@@ -3,23 +3,19 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Http\Resources\CustomerTransactionResource;
-use App\Models\CustomerTransaction;
+use App\Http\Resources\WalletTopUpResource;
 use App\Models\Customer;
+use App\Models\CustomerTransaction;
+use App\Models\WalletTopUp;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
-class CustomerTransactionController extends Controller
+class WalletsTopUpController extends Controller
 {
     public function index(Request $request)
     {
-        $query = CustomerTransaction::with([
-            "customer",
-            "paymentMethod",
-            "Status",
-            "createdBy",
-            "updatedBy",
-        ]);
+        $query = WalletTopUp::with(["customer", "paymentMethod", "status", "createdBy", "updatedBy"]);
 
         if ($request->filled("customer_id")) {
             $query->where("customer_id", $request->customer_id);
@@ -40,8 +36,8 @@ class CustomerTransactionController extends Controller
             $query->where('pay_date', '<=', $request->end_date);
         }
 
-        return CustomerTransactionResource::collection(
-            $query->orderBy("pay_date", "asc")->get(),
+        return WalletTopUpResource::collection(
+            $query->orderBy("pay_date", "desc")->get(),
         );
     }
 
@@ -59,9 +55,8 @@ class CustomerTransactionController extends Controller
 
         DB::beginTransaction();
         try {
-            $transaction = CustomerTransaction::create([
+            $topup = WalletTopUp::create([
                 "customer_id" => $request->customer_id,
-                "type" => "top-up",
                 "amount" => $request->amount,
                 "payment_id" => $request->payment_id,
                 "status_id" => 7,
@@ -71,21 +66,29 @@ class CustomerTransactionController extends Controller
                 "updated_by" => $request->updated_by ?? $request->created_by,
             ]);
 
-            $customer = Customer::findOrFail($transaction->customer_id);
+            // // Update customer balance
+            // $customer = Customer::findOrFail($topup->customer_id);
+            // $customer->balance += $topup->amount;
+            // $customer->save();
 
-            $customer->balance += $transaction->amount;
-            $customer->save();
+            // // Create customer transaction
+            // $req = CustomerTransaction::create([
+            //     "customer_id" => $topup->customer_id,
+            //     "reference_id"=> $topup->id,
+            //     "type" => "top-up",
+            //     "amount" => $topup->amount,
+            //     "payment_id" => $topup->payment_id,
+            //     "status_id" => $topup->status_id,
+            //     "remark" => $topup->remark,
+            //     "pay_date" => $topup->pay_date,
+            //     "created_by" => $topup->created_by,
+            //     "updated_by" => $topup->updated_by,
+            // ]);
 
             DB::commit();
 
-            return new CustomerTransactionResource(
-                $transaction->load([
-                    "customer",
-                    "paymentMethod",
-                    "createdBy",
-                    "updatedBy",
-                ]),
-            );
+            return new WalletTopUpResource($topup->load(["customer", "paymentMethod", "createdBy", "updatedBy"]));
+
         } catch (\Exception $e) {
             DB::rollBack();
             return response()->json(
@@ -97,21 +100,13 @@ class CustomerTransactionController extends Controller
         }
     }
 
-    public function show($id)
+    public function show(string $id)
     {
-        $transaction = CustomerTransaction::with([
-            "customer",
-            "paymentMethod",
-            "createdBy",
-            "updatedBy",
-        ])
-            ->where("type", "top-up")
-            ->findOrFail($id);
-
-        return new CustomerTransactionResource($transaction);
+        $topup = WalletTopUp::with(["customer", "paymentMethod", "createdBy", "updatedBy"])->findOrFail($id);
+        return new WalletTopUpResource($topup);
     }
 
-    public function update(Request $request, $id)
+    public function update(Request $request, string $id)
     {
         $request->validate([
             "customer_id" => "sometimes",
@@ -122,44 +117,44 @@ class CustomerTransactionController extends Controller
             "updated_by" => "required|exists:users,id",
         ]);
 
-        $transaction = CustomerTransaction::where("type", "top-up")->findOrFail(
-            $id,
-        );
+        $topup = WalletTopUp::findOrFail($id);
 
-        $oldCustomer = Customer::findOrFail($transaction->customer_id);
+        $oldCustomer = Customer::findOrFail($topup->customer_id);
 
-        $oldCustomer->balance -= $transaction->amount;
+        $oldCustomer->balance -= $topup->amount;
         $oldCustomer->save();
 
         DB::beginTransaction();
         try {
-            $transaction->fill(
-                $request->only([
-                    "customer_id",
-                    "amount",
-                    "payment_id",
-                    "remark",
-                    "pay_date",
-                ]),
-            );
-            $transaction->updated_by = $request->updated_by;
-            $transaction->save();
+            $topup->fill($request->only(["customer_id", "amount", "payment_id", "remark", "pay_date"]));
+            $topup->updated_by = $request->updated_by;
+            $topup->save();
 
-            $customer = Customer::findOrFail($transaction->customer_id);
-
-            $customer->balance += $transaction->amount;
+            // Update balance
+            $customer = Customer::findOrFail($topup->customer_id);
+            $customer->balance += $topup->amount;
             $customer->save();
+
+            $customerTransaction = CustomerTransaction::where([
+                'customer_id' => $topup->customer_id,
+                'type' => 'top-up',
+                'pay_date' => $topup->pay_date
+            ])->first();
+
+            if ($customerTransaction) {
+                $customerTransaction->update([
+                    "amount" => $topup->amount,
+                    "payment_id" => $topup->payment_id,
+                    "remark" => $topup->remark,
+                    "pay_date" => $topup->pay_date,
+                    "updated_by" => $topup->updated_by,
+                ]);
+            }
 
             DB::commit();
 
-            return new CustomerTransactionResource(
-                $transaction->load([
-                    "customer",
-                    "paymentMethod",
-                    "createdBy",
-                    "updatedBy",
-                ]),
-            );
+            return new WalletTopUpResource($topup->load(["customer", "paymentMethod", "createdBy", "updatedBy"]));
+
         } catch (\Exception $e) {
             DB::rollBack();
             return response()->json(
@@ -171,34 +166,42 @@ class CustomerTransactionController extends Controller
         }
     }
 
-    public function destroy(Request $request, $id)
+    public function destroy(Request $request, string $id)
     {
-        $transaction = CustomerTransaction::findOrFail($id);
-        $customerId = $transaction->customer_id;
+        $topup = WalletTopUp::findOrFail($id);
 
         DB::beginTransaction();
         try {
             // Update balance after delete
-            $customer = Customer::findOrFail($customerId);
-            if ($transaction->type == "top-up") {
-                $customer->balance -= $transaction->amount;
-            } else {
-                if ($transaction->payment_id == 2 || $transaction->payment_id == 3) {
-                    $customer->balance += abs($transaction->amount);
-                } 
-            }
+            $customer = Customer::findOrFail($topup->customer_id);
+            $customer->balance -= $topup->amount;
             $customer->save();
 
-            $transaction->update([
+            $topup->update([
                 'status_id'  => 8,
-                'updated_by' => $request->user_id,
+                "updated_by" => $topup->updated_by,
             ]);
+
+            // Update customer transaction
+            $customerTransaction = CustomerTransaction::where([
+                'customer_id' => $topup->customer_id,
+                'type' => 'top-up',
+                'pay_date' => $topup->pay_date
+            ])->first();
+
+            if ($customerTransaction) {
+                $customerTransaction->update([
+                    "status_id" => 8,
+                    "updated_by" => $topup->updated_by,
+                ]);
+            }
 
             DB::commit();
 
             return response()->json([
                 "message" => "Balance transaction deleted successfully",
             ]);
+
         } catch (\Exception $e) {
             DB::rollBack();
             return response()->json(
@@ -209,13 +212,4 @@ class CustomerTransactionController extends Controller
             );
         }
     }
-
-    // Update customer balance based on top-up transactions
-    // private function updateCustomerBalance($customerId, $amount)
-    // {
-    //     $customer = Customer::findOrFail($customerId);
-
-    //     $customer->balance += $amount;
-    //     $customer->save();
-    // }
 }

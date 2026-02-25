@@ -24,6 +24,7 @@ use App\Http\Controllers\Api\SaleReturnController;
 use App\Http\Controllers\Api\StockTransactionController;
 use App\Http\Controllers\Api\SuppliersController;
 use App\Http\Controllers\Api\UnitsController;
+use App\Http\Controllers\Api\WalletsTopUpController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
@@ -116,6 +117,8 @@ Route::middleware(['auth:sanctum'])->group(function () {
 
     Route::post('/promotions/checkprice', [PromotionsController::class, 'checkPrice']);
     Route::apiResource('/promotions', PromotionsController::class);
+
+    Route::apiResource('/wallets', WalletsTopUpController::class);
 
 });
 
