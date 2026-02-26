@@ -24,6 +24,7 @@ use App\Http\Controllers\Api\SaleReturnController;
 use App\Http\Controllers\Api\StockTransactionController;
 use App\Http\Controllers\Api\SuppliersController;
 use App\Http\Controllers\Api\UnitsController;
+use App\Http\Controllers\Api\WalletsTopUpController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
@@ -120,6 +121,9 @@ Route::middleware(['auth:sanctum'])->group(function () {
     Route::post('/promotions/checkprice', [PromotionsController::class, 'checkPrice']);
     Route::post('/promotions/sync', [PromotionsController::class, 'syncFromCloud']);
     Route::apiResource('/promotions', PromotionsController::class);
+
+    Route::post('/wallets/sync_to_cloud', [WalletsTopUpController::class, 'syncToCloud']);
+    Route::apiResource('/wallets', WalletsTopUpController::class);
 
 });
 
