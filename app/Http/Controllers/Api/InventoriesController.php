@@ -37,7 +37,7 @@ class InventoriesController extends Controller
         try {
             $remainingQty = $request->qty;
 
-            // 1️⃣ Offset negative inventory first
+            // Offset negative inventory first
             $negativeInventories = Inventory::where('product_id', $request->product_id)
                 ->where('warehouse_id', $request->warehouse_id)
                 ->where('qty', '<', 0)
@@ -67,7 +67,7 @@ class InventoriesController extends Controller
                 $remainingQty -= $offsetQty;
             }
 
-            // 2️⃣ Remaining qty → new inventory batch
+            // Remaining qty -> new inventory batch
             if ($remainingQty > 0) {
                 $inventory = Inventory::create([
                     'product_id'   => $request->product_id,
@@ -177,14 +177,14 @@ class InventoriesController extends Controller
         try {
             $inventory = Inventory::lockForUpdate()->findOrFail($id);
 
-            // 1️⃣ Prevent double void
+            // Prevent double void
             if ($inventory->status === 'void') {
                 return response()->json([
                     'error' => 'Inventory already voided'
                 ], 422);
             }
 
-            // 2️⃣ Block if used in SALE
+            // Block if used in SALE
             $usedInSale = StockTransaction::where('inventory_id', $inventory->id)
                 ->where('type', 'out')
                 ->where('reference_type', 'sale')
@@ -196,7 +196,7 @@ class InventoriesController extends Controller
                 ], 422);
             }
 
-            // 3️⃣ Reverse remaining stock
+            // Reverse remaining stock
             if ($inventory->qty != 0) {
                 StockTransaction::create([
                     'inventory_id'    => $inventory->id,
@@ -211,7 +211,7 @@ class InventoriesController extends Controller
                 $inventory->qty = 0;
             }
 
-            // 4️⃣ Mark inventory as VOID
+            // Mark inventory as VOID
             $inventory->update([
                 'status'     => 'void',
                 'updated_by' => $request->void_by,
@@ -239,6 +239,8 @@ class InventoriesController extends Controller
             'inventory_id' => 'required|exists:inventories,id',
             'qty'          => 'required|integer|not_in:0',
             'reason'       => 'nullable|string|max:255',
+            'adjust_date' => 'nullable|date',
+            'type' => 'nullable|in:in,out',
             'created_by'   => 'required|exists:users,id'
         ]);
 
@@ -248,7 +250,11 @@ class InventoriesController extends Controller
             $inventory = Inventory::lockForUpdate()->findOrFail($request->inventory_id);
 
             // Adjust qty (can go negative)
-            $inventory->qty += $request->qty;
+            if ($request->type === 'in') {
+                $inventory->qty += abs($request->qty);
+            } else {
+                $inventory->qty -= abs($request->qty);
+            }
             $inventory->updated_by = $request->created_by;
             $inventory->save();
 
@@ -256,10 +262,10 @@ class InventoriesController extends Controller
                 'inventory_id'    => $inventory->id,
                 'reference_id'    => null,
                 'reference_type'  => 'adjustment',
-                'reference_date' => now(),
+                'reference_date' => $request->adjust_date ?? now(),
                 'quantity_change' => $request->qty,
                 'reason'          => $request->reason,
-                'type'            => $request->qty > 0 ? 'in' : 'out',
+                'type'            => $request->type ?? ($request->qty > 0 ? 'in' : 'out'),
                 'created_by'      => $request->created_by
             ]);
 

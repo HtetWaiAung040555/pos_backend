@@ -15,6 +15,7 @@ use App\Http\Controllers\Api\UsersController;
 use App\Http\Controllers\Api\StatusesController;
 use App\Http\Controllers\Api\WarehousesController;
 use App\Http\Controllers\Api\CustomerTransactionController;
+use App\Http\Controllers\Api\DashboardController;
 use App\Http\Controllers\Api\PriceChangesController;
 use App\Http\Controllers\Api\PromotionsController;
 use App\Http\Controllers\Api\PurchaseReturnController;
@@ -23,6 +24,7 @@ use App\Http\Controllers\Api\SaleReturnController;
 use App\Http\Controllers\Api\StockTransactionController;
 use App\Http\Controllers\Api\SuppliersController;
 use App\Http\Controllers\Api\UnitsController;
+use App\Http\Controllers\Api\WalletsTopUpController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
@@ -57,6 +59,15 @@ Route::middleware(['auth:sanctum'])->group(function () {
     // Check Permission for User
     Route::get('/users/{user}/permissions/{permission}', [UsersController::class, 'hasPermission']);
 
+    Route::get('/dashboard/summary', [DashboardController::class, 'summary']);
+    Route::get('/dashboard/dailysales', [DashboardController::class, 'dailySales']);
+    Route::get('/dashboard/weeklysales',[DashboardController::class, 'weeklySales']);
+    Route::get('/dashboard/monthlysales', [DashboardController::class, 'monthlySales']);
+    Route::get('/dashboard/yearlysales', [DashboardController::class, 'yearlySales']);
+    Route::get('/dashboard/paymentmethods', [DashboardController::class, 'paymentMethods']);
+    Route::get('/dashboard/orders', [DashboardController::class, 'orders']);
+    Route::get('/dashboard/stocklevels', [DashboardController::class, 'stockLevels']);
+
     Route::apiResource('/branches', BranchesController::class);
 
     Route::apiResource('/counters', CountersController::class);
@@ -68,6 +79,7 @@ Route::middleware(['auth:sanctum'])->group(function () {
     Route::apiResource('/categories', CategoriesController::class);
 
     Route::get('/products/saleproducts', [ProductsController::class, 'saleproducts']);
+    Route::get('/products/last-custom-barcode', [ProductsController::class, 'lastCustomBarcode']);
     Route::apiResource('/products', ProductsController::class);
     // Route::get('/products', [ProductsController::class, 'index']);
     // Route::get('/products/{id}', [ProductsController::class, 'show']);
@@ -76,6 +88,7 @@ Route::middleware(['auth:sanctum'])->group(function () {
     // Route::delete('/products/{id}', [ProductsController::class, 'destroy']);
 
     Route::get('/stock_transactions', [StockTransactionController::class, 'index']);
+    Route::delete('/stock_transactions/{id}', [StockTransactionController::class, 'destroy']);
 
     // Route::get('/inventories/saleproducts', [InventoriesController::class, 'saleproducts']);
     Route::post('/inventories/adjust', [InventoriesController::class, 'adjust']);
@@ -104,6 +117,8 @@ Route::middleware(['auth:sanctum'])->group(function () {
 
     Route::post('/promotions/checkprice', [PromotionsController::class, 'checkPrice']);
     Route::apiResource('/promotions', PromotionsController::class);
+
+    Route::apiResource('/wallets', WalletsTopUpController::class);
 
 });
 

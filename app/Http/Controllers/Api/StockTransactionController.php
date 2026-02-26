@@ -7,6 +7,7 @@ use App\Http\Resources\StockTransactionResource;
 use App\Models\StockTransaction;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\DB;
 
 class StockTransactionController extends Controller
 {
@@ -14,27 +15,27 @@ class StockTransactionController extends Controller
     {
         $query = StockTransaction::query()->with(["inventory.product"]);
 
-        // 🔍 Filter by inventory
+        // Filter by inventory
         if ($request->filled("inventory_id")) {
             $query->where("inventory_id", $request->inventory_id);
         }
 
-        // 🔍 Filter by reference type
+        // Filter by reference type
         if ($request->filled("reference_type")) {
             $query->where("reference_type", $request->reference_type);
         }
 
-        // 🔍 Filter by in / out
+        // Filter by in / out
         if ($request->filled("type")) {
             $query->where("type", $request->type);
         }
 
-        // 🔍 Search by reference_id
+        // Search by reference_id
         if ($request->filled("search")) {
             $query->where("reference_id", "like", "%" . $request->search . "%");
         }
 
-        // 📅 Date range filter
+        // Date range filter
         if ($request->filled("start_date") && $request->filled("end_date")) {
             $query->whereBetween("reference_date", [
                 $request->start_date,
@@ -46,7 +47,7 @@ class StockTransactionController extends Controller
             $query->whereDate("reference_date", "<=", $request->end_date);
         }
 
-        // ⬇️ Latest first
+        // ⬇Latest first
         $transactions = $query->orderBy("created_at", "desc")->get();
 
         return StockTransactionResource::collection($transactions);
@@ -69,6 +70,37 @@ class StockTransactionController extends Controller
 
     public function destroy(string $id)
     {
-        //
+        $transaction = StockTransaction::findOrFail($id);
+
+        Log::info("Deleting stock transaction ID: {$transaction->id}, Type: {$transaction->type}, Inventory ID: {$transaction->inventory_id}, Quantity Change: {$transaction->quantity_change}");
+
+        DB::beginTransaction();
+        try {
+            $inventory = $transaction->inventory;
+            Log::info("Associated inventory before deletion: ID: {$inventory->id}, Product ID: {$inventory->product_id}, Current Qty: {$inventory->qty}");
+            if ($inventory) {
+                $change = (float) ($transaction->quantity_change ?? 0);
+
+                if ($transaction->type === 'in') {
+                    // reverse an "in" transaction by decreasing inventory
+                    $inventory->qty = max(0, $inventory->qty - $change);
+                } elseif ($transaction->type === 'out') {
+                    // reverse an "out" transaction by increasing inventory
+                    $inventory->qty = $inventory->qty + $change;
+                }
+
+                $inventory->save();
+            }
+
+            $transaction->delete();
+
+            DB::commit();
+
+            return response()->json(['message' => 'Deleted Successfully'], 200);
+        } catch (\Exception $e) {
+            DB::rollBack();
+            Log::error('Error deleting stock transaction: ' . $e->getMessage());
+            return response()->json(['error' => 'Transaction could not be deleted'], 400);
+        }
     }
 }

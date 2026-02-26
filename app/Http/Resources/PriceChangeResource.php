@@ -2,24 +2,27 @@
 
 namespace App\Http\Resources;
 
+use App\Http\Resources\Concerns\FormatsLocalDateTime;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
 class PriceChangeResource extends JsonResource
 {
+    use FormatsLocalDateTime;
+
     public function toArray(Request $request): array
     {
         $data = [
             'id' => $this->id,
             'description' => $this->description,
             'type' => $this->type,
-            'start_at' => $this->start_at,
-            'end_at' => $this->end_at,
+            'start_at' => $this->toLocalDateTime($this->start_at),
+            'end_at' => $this->toLocalDateTime($this->end_at),
             'status' => $this->status ? [
                 'id'   => $this->status->id,
                 'name' => $this->status->name,
             ] : null,
-            'void_at' => optional($this->void_at)->toDateTimeString(),
+            'void_at' => $this->toLocalDateTime($this->void_at),
             'void_by' => $this->voidBy ? [
                 'id' => $this->voidBy->id,
                 'name' => $this->voidBy->name,
@@ -32,8 +35,8 @@ class PriceChangeResource extends JsonResource
                 'id' => $this->updatedBy->id,
                 'name' => $this->updatedBy->name,
             ] : null,
-            'created_at' => optional($this->created_at)->toDateTimeString(),
-            'updated_at' => optional($this->updated_at)->toDateTimeString(),
+            'created_at' => $this->toLocalDateTime($this->created_at),
+            'updated_at' => $this->toLocalDateTime($this->updated_at),
         ];
 
         if ($this->relationLoaded('products')) {

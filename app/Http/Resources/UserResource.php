@@ -2,18 +2,21 @@
 
 namespace App\Http\Resources;
 
+use App\Http\Resources\Concerns\FormatsLocalDateTime;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
 class UserResource extends JsonResource
 {
+    use FormatsLocalDateTime;
+
     public function toArray(Request $request): array
     {
        return [
             'id'         => $this->id,
             'name'       => $this->name,
             'email'      => $this->email,
-
+            'password'   => $this->password,
             'branch' => [
                 'id' => $this->branch->id ?? null,
                 'name' => $this->branch->name ?? null,
@@ -42,8 +45,8 @@ class UserResource extends JsonResource
                 'name' => $this->updatedBy->name ?? null,
             ],
 
-            'created_at' => $this->created_at?->toDateTimeString(),
-            'updated_at' => $this->updated_at?->toDateTimeString(),
+            'created_at' => $this->toLocalDateTime($this->created_at),
+            'updated_at' => $this->toLocalDateTime($this->updated_at),
 
             'role' => [
                 'id' => $this->role->id ?? null,

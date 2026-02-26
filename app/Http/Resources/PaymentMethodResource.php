@@ -2,11 +2,13 @@
 
 namespace App\Http\Resources;
 
+use App\Http\Resources\Concerns\FormatsLocalDateTime;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
 class PaymentMethodResource extends JsonResource
 {
+    use FormatsLocalDateTime;
     /**
      * Transform the resource into an array.
      */
@@ -30,8 +32,8 @@ class PaymentMethodResource extends JsonResource
                 'name' => $this->updatedBy->name,
             ]),
 
-            'created_at' => $this->created_at ? $this->created_at->toDateTimeString() : null,
-            'updated_at' => $this->updated_at ? $this->updated_at->toDateTimeString() : null,
+            'created_at' => $this->toLocalDateTime($this->created_at),
+            'updated_at' => $this->toLocalDateTime($this->updated_at),
         ];
     }
 }

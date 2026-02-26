@@ -2,11 +2,14 @@
 
 namespace App\Http\Resources;
 
+use App\Http\Resources\Concerns\FormatsLocalDateTime;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
 class StockTransactionResource extends JsonResource
 {
+    use FormatsLocalDateTime;
+
     public function toArray(Request $request): array
     {
         return [
@@ -16,7 +19,7 @@ class StockTransactionResource extends JsonResource
                 "id" => $this->inventory?->id,
                 "name" => $this->inventory?->name,
                 "qty" => $this->inventory?->qty,
-                "expired_date" => $this->inventory?->expired_date,
+                "expired_date" => $this->inventory?->expired_date ? $this->toLocalDateTime($this->inventory->expired_date) : null,
                 "product" => $this->inventory?->product
                     ? [
                         "id" => $this->inventory->product->id,
@@ -38,7 +41,7 @@ class StockTransactionResource extends JsonResource
 
             "reference_id" => $this->reference_id,
             "reference_type" => $this->reference_type,
-            "reference_date" => $this->reference_date,
+            "reference_date" => $this->reference_date ? $this->toLocalDateTime($this->reference_date) : null,
             "quantity_change" => $this->quantity_change,
             "type" => $this->type,
             "reason" => $this->reason,
@@ -48,7 +51,7 @@ class StockTransactionResource extends JsonResource
                 "name" => $this->createdBy?->name,
             ],
 
-            "created_at" => $this->created_at->toDateTimeString(),
+            "created_at" => $this->toLocalDateTime($this->created_at),
         ];
     }
 }
