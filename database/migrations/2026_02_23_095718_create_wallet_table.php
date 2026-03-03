@@ -19,6 +19,8 @@ return new class extends Migration
             $table->dateTime('pay_date')->nullable();
             $table->unsignedBigInteger('created_by');
             $table->unsignedBigInteger('updated_by')->nullable();
+            $table->boolean('is_synced')->default(true);
+            $table->timestamp('synced_at')->nullable();
             $table->timestamps();
         });
     }

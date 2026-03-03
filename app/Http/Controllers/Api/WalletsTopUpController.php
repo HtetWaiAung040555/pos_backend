@@ -66,24 +66,24 @@ class WalletsTopUpController extends Controller
                 "updated_by" => $request->updated_by ?? $request->created_by,
             ]);
 
-            // // Update customer balance
-            // $customer = Customer::findOrFail($topup->customer_id);
-            // $customer->balance += $topup->amount;
-            // $customer->save();
+            // Update customer balance
+            $customer = Customer::findOrFail($topup->customer_id);
+            $customer->balance += $topup->amount;
+            $customer->save();
 
-            // // Create customer transaction
-            // $req = CustomerTransaction::create([
-            //     "customer_id" => $topup->customer_id,
-            //     "reference_id"=> $topup->id,
-            //     "type" => "top-up",
-            //     "amount" => $topup->amount,
-            //     "payment_id" => $topup->payment_id,
-            //     "status_id" => $topup->status_id,
-            //     "remark" => $topup->remark,
-            //     "pay_date" => $topup->pay_date,
-            //     "created_by" => $topup->created_by,
-            //     "updated_by" => $topup->updated_by,
-            // ]);
+            // Create customer transaction
+            $req = CustomerTransaction::create([
+                "customer_id" => $topup->customer_id,
+                "reference_id"=> $topup->id,
+                "type" => "top-up",
+                "amount" => $topup->amount,
+                "payment_id" => $topup->payment_id,
+                "status_id" => $topup->status_id,
+                "remark" => $topup->remark,
+                "pay_date" => $topup->pay_date,
+                "created_by" => $topup->created_by,
+                "updated_by" => $topup->updated_by,
+            ]);
 
             DB::commit();
 
