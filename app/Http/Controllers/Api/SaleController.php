@@ -764,15 +764,18 @@ class SaleController extends Controller
                         ->lockForUpdate()
                         ->increment('qty', $detail->quantity);
 
-                    StockTransaction::create([
-                        'inventory_id' => $detail->inventory_id,
-                        'reference_id' => $sale->id,
-                        'reference_type' => 'sale_update',
-                        'reference_date' => $saleDate,
-                        'quantity_change' => $detail->quantity,
-                        'type' => 'in',
-                        'created_by' => $updatedBy,
-                    ]);
+                    StockTransaction::where('reference_id', $sale->id)
+                    ->delete();
+
+                    // StockTransaction::create([
+                    //     'inventory_id' => $detail->inventory_id,
+                    //     'reference_id' => $sale->id,
+                    //     'reference_type' => 'sale_update',
+                    //     'reference_date' => $saleDate,
+                    //     'quantity_change' => $detail->quantity,
+                    //     'type' => 'in',
+                    //     'created_by' => $updatedBy,
+                    // ]);
                 }
 
                 foreach ($request->products as $item) {
@@ -839,7 +842,7 @@ class SaleController extends Controller
                         $stockTransactions[] = [
                             'inventory_id' => $inventory->id,
                             'reference_id' => $sale->id,
-                            'reference_type' => 'sale_update',
+                            'reference_type' => 'sale',
                             'reference_date' => $saleDate,
                             'quantity_change' => $deductQty,
                             'type' => 'out',
@@ -886,7 +889,7 @@ class SaleController extends Controller
                         $stockTransactions[] = [
                             'inventory_id' => $negativeInventory->id,
                             'reference_id' => $sale->id,
-                            'reference_type' => 'sale_update',
+                            'reference_type' => 'sale',
                             'reference_date' => $saleDate,
                             'quantity_change' => $remainingQty,
                             'type' => 'out',
