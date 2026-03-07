@@ -215,67 +215,145 @@ class WalletsTopUpController extends Controller
         }
     }
 
+    // public function syncToCloud(Request $request)
+    // {
+
+    //     $unsyncedTransaction = WalletTopUp::where('is_synced', false)->get();
+
+    //     if ($unsyncedTransaction->isEmpty()) {
+    //         return response()->json(
+    //             ['message' => 'No sales to sync']
+    //         );
+    //     }
+
+    //     $cloudApiUrl = env('CLOUD_API_URL') . '/api/wallets';
+    //     $apiToken = env('CLOUD_API_TOKEN');
+    //     $results = [];
+
+    //     foreach ($unsyncedTransaction as $transaction) {
+    //         try {
+    //             $payload = $transaction->toArray();
+    //             $payload['pay_date'] = Carbon::parse($transaction->pay_date)
+    //                                  ->setTimezone('Asia/Yangon')
+    //                                  ->format('Y-m-d H:i:s');
+
+    //             $response = Http::withHeaders([
+    //                 'Authorization' => 'Bearer ' . $apiToken
+    //             ])->post($cloudApiUrl, $payload);
+
+    //             if ($response->successful()) {
+
+    //                 $transaction->update([
+    //                     'updated_by' => $request->updated_by,
+    //                     'updated_at' => now(),
+    //                     'is_synced' => true,
+    //                     'synced_at' => now()
+    //                 ]);
+
+    //                 $results[] = [
+    //                     'id' => $transaction->id
+    //                 ];
+
+    //             } else {
+
+    //                 $results[] = [
+    //                     'id' => $transaction->id,
+    //                     'error' => $response->body()
+    //                 ];
+
+    //             }
+
+    //         } catch (\Exception $e) {
+    //             return response()->json(
+    //                 [
+    //                     "error" => "Failed to update balance transaction",
+    //                     "details" => $e->getMessage(),
+    //                 ],500
+    //             );
+    //         }
+    //     }
+
+    //     return response()->json([
+    //         'message' => 'Sync completed',
+    //         'results' => $results
+    //     ],200);
+    // }
+
     public function syncToCloud(Request $request)
     {
+        $cloudApiUrl = config('services.cloud.url') . '/api/wallets';
+        $apiToken    = config('services.cloud.token');
 
-        $unsyncedTransaction = WalletTopUp::where('is_synced', false)->get();
-
-        if ($unsyncedTransaction->isEmpty()) {
-            return response()->json(
-                ['message' => 'No sales to sync']
-            );
-        }
-
-        $cloudApiUrl = env('CLOUD_API_URL') . '/api/wallets';
-        $apiToken = env('CLOUD_API_TOKEN');
         $results = [];
 
-        foreach ($unsyncedTransaction as $transaction) {
-            try {
-                $payload = $transaction->toArray();
-                $payload['pay_date'] = Carbon::parse($transaction->pay_date)
-                                     ->setTimezone('Asia/Yangon')
-                                     ->format('Y-m-d H:i:s');
+        WalletTopUp::where('is_synced', false)
+            ->orderBy('id')
+            ->chunkById(50, function ($transactions) use ($cloudApiUrl, $apiToken, $request, &$results) {
 
-                $response = Http::withHeaders([
-                    'Authorization' => 'Bearer ' . $apiToken
-                ])->post($cloudApiUrl, $payload);
+                foreach ($transactions as $transaction) {
 
-                if ($response->successful()) {
+                    try {
 
-                    $transaction->update([
-                        'updated_by' => $request->updated_by,
-                        'updated_at' => now(),
-                        'is_synced' => true,
-                        'synced_at' => now()
-                    ]);
+                        $payload = $transaction->toArray();
 
-                    $results[] = [
-                        'id' => $transaction->id
-                    ];
+                        $payload['pay_date'] = Carbon::parse($transaction->pay_date)
+                            ->timezone('Asia/Yangon')
+                            ->format('Y-m-d H:i:s');
 
-                } else {
+                        $response = Http::timeout(10)
+                            ->retry(3, 200)
+                            ->withToken($apiToken)
+                            ->post($cloudApiUrl, $payload);
+                        
+                        $data = $response->json('data') ?? null;
 
-                    $results[] = [
-                        'id' => $transaction->id,
-                        'error' => $response->body()
-                    ];
+                        Log::info($data);
+
+                        if ($data) {
+
+                            DB::transaction(function () use ($transaction, $request) {
+
+                                $transaction->update([
+                                    'is_synced'  => true,
+                                    'synced_at'  => now(),
+                                    'updated_by' => $request->updated_by,
+                                    'updated_at' => now()
+                                ]);
+
+                            });
+
+                            $results[] = [
+                                'id' => $transaction->id,
+                                'status' => 'synced'
+                            ];
+
+                        } else {
+
+                            $results[] = [
+                                'id' => $transaction->id,
+                                'status' => 'failed',
+                                'error' => $response->body()
+                            ];
+                        }
+
+                    } catch (\Throwable $e) {
+
+                        $results[] = [
+                            'id' => $transaction->id,
+                            'status' => 'error',
+                            'error' => $e->getMessage()
+                        ];
+
+                    }
 
                 }
 
-            } catch (\Exception $e) {
-                return response()->json(
-                    [
-                        "error" => "Failed to update balance transaction",
-                        "details" => $e->getMessage(),
-                    ],500
-                );
-            }
-        }
+            });
 
         return response()->json([
-            'message' => 'Sync completed',
+            'message' => 'Wallet transactions sync completed',
             'results' => $results
-        ],200);
+        ]);
     }
+    
 }

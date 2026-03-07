@@ -215,10 +215,12 @@ class PromotionsController extends Controller
     public function syncFromCloud(Request $request)
     {
         try {
-            $response = Http::withToken(env('CLOUD_API_TOKEN'))
-                ->get(env('CLOUD_API_URL') . '/api/promotions');
+            $response = Http::withToken(config('services.cloud.token'))
+                ->timeout(20)
+                ->retry(3, 200)
+                ->get(config('services.cloud.url') . '/api/promotions');
 
-            if (! $response->successful()) {
+            if (!$response->successful()) {
                 return response()->json([
                     'message' => 'Cloud API request failed',
                     'status'  => $response->status()
@@ -227,7 +229,7 @@ class PromotionsController extends Controller
 
             $promotions = $response->json('data');
 
-            if (! is_array($promotions)) {
+            if (!is_array($promotions)) {
                 return response()->json([
                     'message' => 'Invalid promotion data'
                 ], 500);
@@ -265,7 +267,7 @@ class PromotionsController extends Controller
 
             DB::commit();
 
-            return response()->json(['message' => 'sucess'], 200);
+            return response()->json(['message' => 'success'], 200);
 
         } catch (\Throwable $e) {
 
@@ -278,6 +280,122 @@ class PromotionsController extends Controller
             ], 500);
         }
     }
+
+    // public function syncFromCloud(Request $request)
+    // {
+    //     try {
+
+    //         $response = Http::withToken(config('services.cloud.token'))
+    //             ->timeout(20)
+    //             ->retry(3, 200)
+    //             ->get(config('services.cloud.url') . '/api/promotions');
+
+    //         if (!$response->successful()) {
+    //             return response()->json([
+    //                 'message' => 'Cloud API request failed',
+    //                 'status'  => $response->status()
+    //             ], 500);
+    //         }
+
+    //         $promotions = $response->json('data');
+
+    //         if (!is_array($promotions)) {
+    //             return response()->json([
+    //                 'message' => 'Invalid promotion data'
+    //             ], 500);
+    //         }
+
+    //         DB::beginTransaction();
+
+    //         $promotionUpserts = [];
+    //         $pivotRows = [];
+
+    //         foreach ($promotions as $item) {
+
+    //             if (!isset($item['id'])) {
+    //                 continue;
+    //             }
+
+    //             $promotionUpserts[] = [
+    //                 'id'             => $item['id'],
+    //                 'name'           => $item['name'] ?? null,
+    //                 'description'    => $item['description'] ?? null,
+    //                 'discount_type'  => $item['discount_type'] ?? null,
+    //                 'discount_value' => (float) ($item['discount_value'] ?? 0),
+    //                 'start_at'       => $item['start_at'] ?? null,
+    //                 'end_at'         => $item['end_at'] ?? null,
+    //                 'status_id'      => $item['status']['id'] ?? null,
+    //                 'void_at'        => $item['void_at'] ?? null,
+    //                 'void_by'        => $item['void_by']['id'] ?? null,
+    //                 'created_by'     => $item['created_by']['id'] ?? null,
+    //                 'created_at'     => $item['created_at'] ?? now(),
+    //                 'updated_by'     => $request->updated_by,
+    //                 'updated_at'     => now(),
+    //             ];
+
+    //             if (!empty($item['products']) && is_array($item['products'])) {
+
+    //                 foreach ($item['products'] as $product) {
+
+    //                     if (!isset($product['id'])) {
+    //                         continue;
+    //                     }
+
+    //                     $pivotRows[] = [
+    //                         'promotion_id' => $item['id'],
+    //                         'product_id'   => $product['id']
+    //                     ];
+    //                 }
+    //             }
+    //         }
+
+    //         if (!empty($promotionUpserts)) {
+
+    //             Promotion::upsert(
+    //                 $promotionUpserts,
+    //                 ['id'],
+    //                 [
+    //                     'name',
+    //                     'description',
+    //                     'discount_type',
+    //                     'discount_value',
+    //                     'start_at',
+    //                     'end_at',
+    //                     'status_id',
+    //                     'void_at',
+    //                     'void_by',
+    //                     'updated_by',
+    //                     'updated_at'
+    //                 ]
+    //             );
+    //         }
+
+    //         /* Sync pivot table */
+
+    //         if (!empty($pivotRows)) {
+
+    //             DB::table('product_promotion')->truncate();
+
+    //             DB::table('product_promotion')->insert($pivotRows);
+    //         }
+
+    //         DB::commit();
+
+    //         return response()->json([
+    //             'message' => 'Promotions synced successfully',
+    //             'count'   => count($promotionUpserts)
+    //         ]);
+
+    //     } catch (\Throwable $e) {
+
+    //         DB::rollBack();
+
+    //         return response()->json([
+    //             'message' => 'Promotion sync failed',
+    //             'error'   => $e->getMessage()
+    //         ], 500);
+    //     }
+    // }
 
     // Check if products are already inside another active promotion.
     // private function checkProductAlreadyInPromotion($products, $ignorePromotionId = null)

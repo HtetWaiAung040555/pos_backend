@@ -14,6 +14,11 @@ return [
     |
     */
 
+    'cloud' => [
+        'url' => env('CLOUD_API_URL'),
+        'token' => env('CLOUD_API_TOKEN'),
+    ],
+
     'postmark' => [
         'token' => env('POSTMARK_TOKEN'),
     ],

@@ -310,14 +310,71 @@ class InventoriesController extends Controller
         );
     }
 
+    // public function syncFromCloud(Request $request)
+    // {
+    //     try {
+    //         $response = Http::withToken(env('CLOUD_API_TOKEN'))
+    //             ->get(env('CLOUD_API_URL') . '/api/inventories');
+
+    //         if (! $response->successful()) {
+    //             Log::info('response', $request->all());
+    //             return response()->json([
+    //                 'message' => 'Cloud API request failed',
+    //                 'status'  => $response->status()
+    //             ], 500);
+    //         }
+
+    //         $inventories = $response->json('data');
+
+    //         //Log::info('Inventories', $inventories);
+
+    //         if (! is_array($inventories)) {
+    //             return response()->json([
+    //                 'message' => 'Invalid inventory data'
+    //             ], 500);
+    //         }
+
+    //         foreach ($inventories as $item) {
+
+    //             $inventory = Inventory::updateOrCreate(
+    //                 ['id' => $item['id']],
+    //                 [
+    //                     'name'       => $item['name'],
+    //                     'qty'      => $item['qty'],
+    //                     'expired_date'      => $item['expired_date'] ?? null,
+    //                     'product_id'  => $item['product']['id'],
+    //                     'warehouse_id'      => $item['warehouse']['id'],
+    //                     'created_by' => $item['created_by']['id'],
+    //                     'created_at' => $item['created_at'],
+    //                     'updated_by' => $request->updated_by,
+    //                     'void_by' => $item['void_by'] ? $item['void_by']['id'] : null,
+    //                     'void_at' => $item['void_at']
+    //                 ]
+    //             );
+    //         }
+
+    //         return response()->json(['message' => 'success'], 200);
+
+    //     } catch (\Exception $e) {
+
+    //         return response()->json([
+    //             'message' => 'An error occurred during sync',
+    //             'error'   => $e->getMessage()
+    //         ], 500);
+
+    //     }
+    // }
+
     public function syncFromCloud(Request $request)
     {
         try {
-            $response = Http::withToken(env('CLOUD_API_TOKEN'))
-                ->get(env('CLOUD_API_URL') . '/api/inventories');
 
-            if (! $response->successful()) {
-                Log::info('response', $request->all());
+            $response = Http::withToken(config('services.cloud.token'))
+                ->timeout(20)
+                ->retry(3, 200)
+                ->get(config('services.cloud.url') . '/api/inventories');
+
+            if (!$response->successful()) {
                 return response()->json([
                     'message' => 'Cloud API request failed',
                     'status'  => $response->status()
@@ -326,42 +383,76 @@ class InventoriesController extends Controller
 
             $inventories = $response->json('data');
 
-            //Log::info('Inventories', $inventories);
-
-            if (! is_array($inventories)) {
+            if (!is_array($inventories)) {
                 return response()->json([
-                    'message' => 'Invalid inventory data'
+                    'message' => 'Invalid inventory data format'
                 ], 500);
             }
 
+            DB::beginTransaction();
+
+            $upserts = [];
+
             foreach ($inventories as $item) {
 
-                $inventory = Inventory::updateOrCreate(
-                    ['id' => $item['id']],
+                if (!isset($item['id'])) {
+                    continue;
+                }
+
+                $upserts[] = [
+                    'id'           => $item['id'],
+                    'name'         => $item['name'] ?? null,
+                    'qty'          => $item['qty'] ?? 0,
+                    'expired_date' => $item['expired_date'] ?? null,
+                    'product_id'   => $item['product']['id'] ?? null,
+                    'warehouse_id' => $item['warehouse']['id'] ?? null,
+                    'created_by'   => $item['created_by']['id'] ?? null,
+                    'created_at'   => $item['created_at'] ?? now(),
+                    'updated_by'   => $request->updated_by,
+                    'void_by'      => $item['void_by']['id'] ?? null,
+                    'void_at'      => $item['void_at'] ?? null,
+                    'updated_at'   => now()
+                ];
+            }
+
+            if (!empty($upserts)) {
+
+                Inventory::upsert(
+                    $upserts,
+                    ['id'], // unique key
                     [
-                        'name'       => $item['name'],
-                        'qty'      => $item['qty'],
-                        'expired_date'      => $item['expired_date'] ?? null,
-                        'product_id'  => $item['product']['id'],
-                        'warehouse_id'      => $item['warehouse']['id'],
-                        'created_by' => $item['created_by']['id'],
-                        'created_at' => $item['created_at'],
-                        'updated_by' => $request->updated_by,
-                        'void_by' => $item['void_by'] ? $item['void_by']['id'] : null,
-                        'void_at' => $item['void_at']
+                        'name',
+                        'qty',
+                        'expired_date',
+                        'product_id',
+                        'warehouse_id',
+                        'updated_by',
+                        'void_by',
+                        'void_at',
+                        'updated_at'
                     ]
                 );
             }
 
-            return response()->json(['message' => 'success'], 200);
-
-        } catch (\Exception $e) {
+            DB::commit();
 
             return response()->json([
-                'message' => 'An error occurred during sync',
+                'message' => 'Inventory synced successfully',
+                'count'   => count($upserts)
+            ]);
+
+        } catch (\Throwable $e) {
+
+            DB::rollBack();
+
+            Log::error('Inventory sync failed', [
+                'error' => $e->getMessage()
+            ]);
+
+            return response()->json([
+                'message' => 'Inventory sync failed',
                 'error'   => $e->getMessage()
             ], 500);
-
         }
     }
 

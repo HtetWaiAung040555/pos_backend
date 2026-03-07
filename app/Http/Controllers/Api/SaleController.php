@@ -14,6 +14,7 @@ use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 
 use function Symfony\Component\Clock\now;
 
@@ -581,68 +582,167 @@ class SaleController extends Controller
         }
     }
 
+    // public function syncToCloud(Request $request)
+    // {
+    //     $unsyncedSales = Sale::with(['details', 'details.product'])
+    //                         ->where('is_synced', false)
+    //                         ->get();
+
+    //     if ($unsyncedSales->isEmpty()) {
+    //         return response()->json(['message' => 'No sales to sync']);
+    //     }
+
+    //     $cloudApiUrl = env('CLOUD_API_URL') . '/api/sales';
+    //     $apiToken = env('CLOUD_API_TOKEN');
+    //     $results = [];
+
+    //     foreach ($unsyncedSales as $sale) {
+    //         try {
+    //             $payload = $sale->toArray();
+
+    //             $payload['products'] = $sale->details;
+
+    //             $payload['sale_date'] = Carbon::parse($sale->sale_date)
+    //                                  ->setTimezone('Asia/Yangon')
+    //                                  ->format('Y-m-d H:i:s');
+
+    //             $response = Http::withHeaders([
+    //                 'Authorization' => 'Bearer ' . $apiToken
+    //             ])->post($cloudApiUrl, $payload);
+
+    //             if ($response->successful()) {
+
+    //                 $sale->update([
+    //                     'updated_by' => $request->updated_by,
+    //                     'updated_at' => now(),
+    //                     'is_synced' => true,
+    //                     'synced_at' => now()
+    //                 ]);
+
+    //                 $results[] = [
+    //                     'sale_id' => $sale->id
+    //                 ];
+
+    //             } else {
+
+    //                 $results[] = [
+    //                     'sale_id' => $sale->id,
+    //                     'error' => $response->body()
+    //                 ];
+
+    //             }
+
+    //         } catch (\Exception $e) {
+    //             $results[] = [
+    //                 'sale_id' => $sale->id,
+    //                 'error' => $e->getMessage()
+    //             ];
+    //         }
+    //     }
+
+    //     return response()->json([
+    //         'message' => 'Sync completed',
+    //         'results' => $results
+    //     ],200);
+    // }
+
     public function syncToCloud(Request $request)
     {
-        $unsyncedSales = Sale::with(['details', 'details.product'])
-                            ->where('is_synced', false)
-                            ->get();
+        $apiUrl = config('services.cloud.url') . '/api/sales';
+        $token = config('services.cloud.token');
 
-        if ($unsyncedSales->isEmpty()) {
-            return response()->json(['message' => 'No sales to sync']);
-        }
+        $synced = [];
+        $failed = [];
 
-        $cloudApiUrl = env('CLOUD_API_URL') . '/api/sales';
-        $apiToken = env('CLOUD_API_TOKEN');
-        $results = [];
+        Sale::with(['details'])
+            ->where('is_synced', false)
+            ->orderBy('sale_date')
+            ->chunkById(50, function ($sales) use ($apiUrl, $token, $request, &$synced, &$failed) {
 
-        foreach ($unsyncedSales as $sale) {
-            try {
-                $payload = $sale->toArray();
+                foreach ($sales as $sale) {
 
-                $payload['products'] = $sale->details;
+                    try {
 
-                $payload['sale_date'] = Carbon::parse($sale->sale_date)
-                                     ->setTimezone('Asia/Yangon')
-                                     ->format('Y-m-d H:i:s');
+                        DB::beginTransaction();
 
-                $response = Http::withHeaders([
-                    'Authorization' => 'Bearer ' . $apiToken
-                ])->post($cloudApiUrl, $payload);
+                        // Lock record to avoid duplicate sync
+                        $sale = Sale::lockForUpdate()->find($sale->id);
 
-                if ($response->successful()) {
+                        if ($sale->is_synced) {
+                            DB::commit();
+                            continue;
+                        }
 
-                    $sale->update([
-                        'updated_by' => $request->updated_by,
-                        'updated_at' => now(),
-                        'is_synced' => true,
-                        'synced_at' => now()
-                    ]);
+                        $payload = [
+                            'id' => $sale->id,
+                            'customer_id' => $sale->customer_id,
+                            'payment_id' => $sale->payment_id,
+                            'paid_amount' => $sale->paid_amount,
+                            'status_id' => $sale->status_id,
+                            'remark' => $sale->remark,
+                            'sale_date' => Carbon::parse($sale->sale_date)
+                                ->setTimezone('Asia/Yangon')
+                                ->format('Y-m-d H:i:s'),
+                            'created_by' => $sale->created_by,
+                            'warehouse_id' => $sale->warehouse_id,
+                            'products' => $sale->details->map(function ($detail) {
+                                return [
+                                    'product_id' => $detail->product_id,
+                                    'quantity' => $detail->quantity,
+                                    'price' => $detail->price,
+                                    'discount_amount' => $detail->discount_amount,
+                                    'discount_price' => $detail->discount_price,
+                                    'promotion_id' => $detail->promotion_id,
+                                ];
+                            })
+                        ];
 
-                    $results[] = [
-                        'sale_id' => $sale->id
-                    ];
+                        $response = Http::withToken($token)
+                            ->post($apiUrl, $payload);
 
-                } else {
+                        $data = $response->json('data') ?? null;
 
-                    $results[] = [
-                        'sale_id' => $sale->id,
-                        'error' => $response->body()
-                    ];
+                        if ($data) {
 
+                            $sale->update([
+                                'is_synced' => true,
+                                'synced_at' => now(),
+                                'updated_by' => $request->updated_by
+                            ]);
+
+                            DB::commit();
+
+                            $synced[] = $sale->id;
+
+                        } else {
+
+                            DB::rollBack();
+
+                            $failed[] = [
+                                'sale_id' => $sale->id,
+                                'error' => $response->body()
+                            ];
+                        }
+
+                    } catch (\Throwable $e) {
+
+                        DB::rollBack();
+
+                        $failed[] = [
+                            'sale_id' => $sale->id,
+                            'error' => $e->getMessage()
+                        ];
+                    }
                 }
 
-            } catch (\Exception $e) {
-                $results[] = [
-                    'sale_id' => $sale->id,
-                    'error' => $e->getMessage()
-                ];
-            }
-        }
+            });
 
         return response()->json([
             'message' => 'Sync completed',
-            'results' => $results
-        ],200);
+            'synced_count' => count($synced),
+            'failed_count' => count($failed),
+            'failed' => $failed
+        ]);
     }
 
 }

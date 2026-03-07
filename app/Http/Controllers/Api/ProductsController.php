@@ -181,14 +181,72 @@ class ProductsController extends Controller
             );
     }
 
+    // public function syncFromCloud(Request $request)
+    // {
+    //     try{
+
+    //         $response = Http::withToken(env('CLOUD_API_TOKEN'))
+    //             ->get(env('CLOUD_API_URL') . '/api/products');
+
+    //         if (! $response->successful()) {
+    //             return response()->json([
+    //                 'message' => 'Cloud API request failed',
+    //                 'status'  => $response->status()
+    //             ], 500);
+    //         }
+
+    //         $products = $response->json('data');
+
+    //         if (! is_array($products)) {
+    //             return response()->json([
+    //                 'message' => 'Invalid customer data'
+    //             ], 500);
+    //         }
+
+    //         foreach ($products as $item) {
+
+    //             Product::updateOrCreate(
+    //                 ['id' => $item['id']],
+    //                 [
+    //                     'name'       => $item['name'],
+    //                     'unit_id'    => $item['unit_id']['id'],
+    //                     'sec_prop'   => $item['sec_prop'],
+    //                     'category_id'=> $item['category_id']['id'],
+    //                     'purchase_price' => $item['purchase_price'],
+    //                     'old_purchase_price' => $item['old_purchase_price'],
+    //                     'price'      => $item['price'],
+    //                     'old_price'  => $item['old_price'],
+    //                     'barcode'    => $item['barcode'],
+    //                     'status_id'  => $item['status']['id'],
+    //                     'created_by' => $item['created_by']['id'],
+    //                     'created_at' => $item['created_at'],
+    //                     'updated_by' => $request->updated_by
+    //                 ]
+    //             );
+    //         }
+
+    //         return response()->json(['message' => 'success'], 200);
+
+    //     } catch (\Exception $e) {
+
+    //         return response()->json([
+    //             'message' => 'An error occurred during sync',
+    //             'error'   => $e->getMessage()
+    //         ], 500);
+
+    //     }
+    // }
+
     public function syncFromCloud(Request $request)
     {
-        try{
+        try {
 
-            $response = Http::withToken(env('CLOUD_API_TOKEN'))
-                ->get(env('CLOUD_API_URL') . '/api/products');
+            $response = Http::withToken(config('services.cloud.token'))
+                ->timeout(20)
+                ->retry(3, 200)
+                ->get(config('services.cloud.url') . '/api/products');
 
-            if (! $response->successful()) {
+            if (!$response->successful()) {
                 return response()->json([
                     'message' => 'Cloud API request failed',
                     'status'  => $response->status()
@@ -197,43 +255,78 @@ class ProductsController extends Controller
 
             $products = $response->json('data');
 
-            if (! is_array($products)) {
+            if (!is_array($products)) {
                 return response()->json([
-                    'message' => 'Invalid customer data'
+                    'message' => 'Invalid product data format'
                 ], 500);
             }
 
+            DB::beginTransaction();
+
+            $upserts = [];
+
             foreach ($products as $item) {
 
-                Product::updateOrCreate(
-                    ['id' => $item['id']],
+                if (!isset($item['id'])) {
+                    continue;
+                }
+
+                $upserts[] = [
+                    'id'                 => $item['id'],
+                    'name'               => $item['name'] ?? null,
+                    'unit_id'            => $item['unit_id']['id'] ?? null,
+                    'sec_prop'           => $item['sec_prop'] ?? null,
+                    'category_id'        => $item['category_id']['id'] ?? null,
+                    'purchase_price'     => $item['purchase_price'] ?? 0,
+                    'old_purchase_price' => $item['old_purchase_price'] ?? null,
+                    'price'              => $item['price'] ?? 0,
+                    'old_price'          => $item['old_price'] ?? null,
+                    'barcode'            => $item['barcode'] ?? null,
+                    'status_id'          => $item['status']['id'] ?? null,
+                    'created_by'         => $item['created_by']['id'] ?? null,
+                    'created_at'         => $item['created_at'] ?? now(),
+                    'updated_by'         => $request->updated_by,
+                    'updated_at'         => now()
+                ];
+            }
+
+            if (!empty($upserts)) {
+
+                Product::upsert(
+                    $upserts,
+                    ['id'], // unique key
                     [
-                        'name'       => $item['name'],
-                        'unit_id'    => $item['unit_id']['id'],
-                        'sec_prop'   => $item['sec_prop'],
-                        'category_id'=> $item['category_id']['id'],
-                        'purchase_price' => $item['purchase_price'],
-                        'old_purchase_price' => $item['old_purchase_price'],
-                        'price'      => $item['price'],
-                        'old_price'  => $item['old_price'],
-                        'barcode'    => $item['barcode'],
-                        'status_id'  => $item['status']['id'],
-                        'created_by' => $item['created_by']['id'],
-                        'created_at' => $item['created_at'],
-                        'updated_by' => $request->updated_by
+                        'name',
+                        'unit_id',
+                        'sec_prop',
+                        'category_id',
+                        'purchase_price',
+                        'old_purchase_price',
+                        'price',
+                        'old_price',
+                        'barcode',
+                        'status_id',
+                        'updated_by',
+                        'updated_at'
                     ]
                 );
             }
 
-            return response()->json(['message' => 'success'], 200);
-
-        } catch (\Exception $e) {
+            DB::commit();
 
             return response()->json([
-                'message' => 'An error occurred during sync',
+                'message' => 'Products synced successfully',
+                'count'   => count($upserts)
+            ]);
+
+        } catch (\Throwable $e) {
+
+            DB::rollBack();
+
+            return response()->json([
+                'message' => 'Product sync failed',
                 'error'   => $e->getMessage()
             ], 500);
-
         }
     }
 

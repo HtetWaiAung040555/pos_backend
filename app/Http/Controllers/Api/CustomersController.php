@@ -7,6 +7,7 @@ use App\Http\Resources\CustomerResource;
 use App\Models\Customer;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 
 class CustomersController extends Controller
 {
@@ -83,13 +84,69 @@ class CustomersController extends Controller
         return response()->json(['last_id' => $lastCustomer->id ?? null]);
     }
 
+    // public function syncFromCloud(Request $request)
+    // {
+        
+    //     try {
+    //         $response = Http::withToken(config('services.cloud.token'))
+    //             ->get(config('services.cloud.url') . '/api/customers');
+
+    //         if (! $response->successful()) {
+    //             return response()->json([
+    //                 'message' => 'Cloud API request failed',
+    //                 'status'  => $response->status()
+    //             ], 500);
+    //         }
+
+    //         $customers = $response->json('data');
+
+    //         if (! is_array($customers)) {
+    //             return response()->json([
+    //                 'message' => 'Invalid customer data'
+    //             ], 500);
+    //         }
+
+    //         foreach ($customers as $item) {
+
+    //             $customer = Customer::updateOrCreate(
+    //                 ['id' => $item['id']],
+    //                 [
+    //                     'name'       => $item['name'],
+    //                     'phone'      => $item['phone'],
+    //                     'address'      => $item['address'],
+    //                     'status_id'  => $item['status']['id'],
+    //                     'is_default'      => $item['is_default'],
+    //                     'balance'      => (float) $item['balance'],
+    //                     'created_at' => $item['created_at'],
+    //                     'created_by' => $item['created_by']['id'],
+    //                     'updated_by' => $request->updated_by
+    //                 ]
+    //             );
+
+    //         }
+
+    //         return response()->json(['message' => 'success'], 200);
+
+    //     } catch (\Exception $e) {
+
+    //         return response()->json([
+    //             'message' => 'An error occurred during sync',
+    //             'error'   => $e->getMessage()
+    //         ], 500);
+
+    //     }
+    // }
+
     public function syncFromCloud(Request $request)
     {
         try {
-            $response = Http::withToken(env('CLOUD_API_TOKEN'))
-                ->get(env('CLOUD_API_URL') . '/api/customers');
 
-            if (! $response->successful()) {
+            $response = Http::withToken(config('services.cloud.token'))
+                ->timeout(20)
+                ->retry(3, 200)
+                ->get(config('services.cloud.url') . '/api/customers');
+
+            if (!$response->successful()) {
                 return response()->json([
                     'message' => 'Cloud API request failed',
                     'status'  => $response->status()
@@ -98,40 +155,68 @@ class CustomersController extends Controller
 
             $customers = $response->json('data');
 
-            if (! is_array($customers)) {
+            if (!is_array($customers)) {
                 return response()->json([
                     'message' => 'Invalid customer data'
                 ], 500);
             }
 
+            $rows = [];
+
             foreach ($customers as $item) {
 
-                $customer = Customer::updateOrCreate(
-                    ['id' => $item['id']],
-                    [
-                        'name'       => $item['name'],
-                        'phone'      => $item['phone'],
-                        'address'      => $item['address'],
-                        'status_id'  => $item['status']['id'],
-                        'is_default'      => $item['is_default'],
-                        'balance'      => (float) $item['balance'],
-                        'created_at' => $item['created_at'],
-                        'created_by' => $item['created_by']['id'],
-                        'updated_by' => $request->updated_by
-                    ]
-                );
+                if (!isset($item['id'])) {
+                    continue;
+                }
 
+                $rows[] = [
+                    'id'         => $item['id'],
+                    'name'       => $item['name'] ?? null,
+                    'phone'      => $item['phone'] ?? null,
+                    'address'    => $item['address'] ?? null,
+                    'status_id'  => $item['status']['id'] ?? null,
+                    'is_default' => $item['is_default'] ?? false,
+                    'balance'    => (float) ($item['balance'] ?? 0),
+                    'created_by' => $item['created_by']['id'] ?? null,
+                    'created_at' => $item['created_at'] ?? now(),
+                    'updated_by' => $request->updated_by,
+                    'updated_at' => now(),
+                ];
             }
 
-            return response()->json(['message' => 'success'], 200);
+            if (!empty($rows)) {
 
-        } catch (\Exception $e) {
+                Customer::upsert(
+                    $rows,
+                    ['id'], // unique key
+                    [
+                        'name',
+                        'phone',
+                        'address',
+                        'status_id',
+                        'is_default',
+                        'balance',
+                        'updated_by',
+                        'updated_at'
+                    ]
+                );
+            }
 
             return response()->json([
-                'message' => 'An error occurred during sync',
+                'message' => 'Customers synced successfully',
+                'count'   => count($rows)
+            ]);
+
+        } catch (\Throwable $e) {
+
+            Log::error('Customer sync failed', [
+                'error' => $e->getMessage()
+            ]);
+
+            return response()->json([
+                'message' => 'Customer sync failed',
                 'error'   => $e->getMessage()
             ], 500);
-
         }
     }
 
