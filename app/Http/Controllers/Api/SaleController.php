@@ -283,6 +283,7 @@ class SaleController extends Controller
             /* Create Sale */
 
             $sale = Sale::create([
+                'id' => $request->id,
                 'warehouse_id' => $warehouseId,
                 'customer_id' => $request->customer_id,
                 'total_amount' => $totalAmount,
@@ -1042,4 +1043,5 @@ class SaleController extends Controller
             ], 500);
         }
     }
+
 }

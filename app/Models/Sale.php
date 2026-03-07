@@ -44,7 +44,7 @@ class Sale extends Model
 
         static::creating(function ($sale) {
             
-            if (!empty($sale->id)) {
+            if ($sale->id) {
                 return;
             }
 
