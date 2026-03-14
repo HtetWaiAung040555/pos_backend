@@ -670,7 +670,7 @@ class SaleController extends Controller
                 COUNT(DISTINCT sales.id) as total_invoice,
                 COALESCE(SUM(sales.total_amount),0) as total_sales,
                 COALESCE(SUM(CASE WHEN sales.payment_id = 1 THEN sales.total_amount END),0) as total_cash,
-                COALESCE(SUM(CASE WHEN sales.payment_id = 2 THEN sales.total_amount END),0) as total_kpay,
+                COALESCE(SUM(CASE WHEN sales.payment_id = 4 THEN sales.total_amount END),0) as total_kpay,
                 COALESCE(SUM(CASE WHEN sales.payment_id = 3 THEN sales.total_amount END),0) as total_wallet
             ")
             ->first();
