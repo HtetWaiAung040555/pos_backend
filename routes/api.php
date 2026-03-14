@@ -105,6 +105,9 @@ Route::middleware(['auth:sanctum'])->group(function () {
 
     Route::apiResource('/purchase_returns', PurchaseReturnController::class);
 
+    Route::post('/sales/store_from_pos', [SaleController::class, 'storeFromPOS']);
+    Route::get('/sales/export', [SaleController::class, 'export']);
+    Route::get('/sales/dashboard', [SaleController::class, 'dashboard']);
     Route::apiResource('/sales', SaleController::class);
 
     Route::apiResource('/sale_returns',SaleReturnController::class);
