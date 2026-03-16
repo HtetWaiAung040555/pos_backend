@@ -101,6 +101,8 @@ Route::middleware(['auth:sanctum'])->group(function () {
 
     Route::apiResource('/suppliers', SuppliersController::class);
 
+    Route::get('/purchases/export', [PurchasesController::class, 'export']);
+    Route::get('/purchases/dashboard', [PurchasesController::class, 'dashboard']);
     Route::apiResource('/purchases', PurchasesController::class);
 
     Route::apiResource('/purchase_returns', PurchaseReturnController::class);

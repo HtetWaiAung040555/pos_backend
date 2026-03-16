@@ -17,39 +17,27 @@ use function Symfony\Component\Clock\now;
 
 class PurchasesController extends Controller
 {
+
     public function index(Request $request)
     {
-        $query = Purchase::with([
-            'supplier',
-            'status',
-            'warehouse',
-            'paymentMethod',
-            'details.product',
-            'createdBy',
-            'updatedBy'
-        ]);
+        $query = PurchasesController::build($request)
+            ->select('purchases.*')
+            ->with([
+                'supplier',
+                'status',
+                'warehouse',
+                'paymentMethod',
+                'details.product',
+                'createdBy',
+                'updatedBy'
+            ])
+            ->orderByDesc('purchases.purchase_date');
 
-        if ($request->filled('supplier_id')) {
-            $query->where('supplier_id', $request->supplier_id);
-        }
+        $perPage = $request->get('per_page', 50);
 
-        if ($request->filled('status_id')) {
-            $query->where('status_id', $request->status_id);
-        }
+        $purchases = $query->paginate($perPage);
 
-        if ($request->filled('warehouse_id')) {
-            $query->where('warehouse_id', $request->warehouse_id);
-        }
-
-        if ($request->filled('start_date') && $request->filled('end_date')) {
-            $query->whereBetween('purchase_date', [$request->start_date, $request->end_date]);
-        } elseif ($request->filled('start_date')) {
-            $query->whereDate('purchase_date', '>=', $request->start_date);
-        } elseif ($request->filled('end_date')) {
-            $query->whereDate('purchase_date', '<=', $request->end_date);
-        }
-
-        return PurchaseResource::collection($query->OrderBy('purchase_date')->get());
+        return PurchaseResource::collection($purchases);
     }
 
     public function store(Request $request)
@@ -466,4 +454,90 @@ class PurchasesController extends Controller
             ], 500);
         }
     }
+
+    public static function build(Request $request)
+    {
+        return Purchase::query()
+            ->when($request->filled('purchase_id'), function ($q) use ($request) {
+                $q->where('purchases.id', $request->purchase_id);
+            })
+
+            ->when($request->filled('supplier_search'), function ($q) use ($request) {
+
+                $keyword = $request->supplier_search;
+
+                $q->join('suppliers', 'purchases.supplier_id', '=', 'suppliers.id')
+                  ->where(function ($sub) use ($keyword) {
+                      $sub->where('suppliers.id', $keyword)
+                          ->orWhere('suppliers.name', 'like', "%{$keyword}%");
+                  });
+            })
+
+            ->when($request->filled('status_id'), function ($q) use ($request) {
+                $q->where('purchases.status_id', $request->status_id);
+            })
+
+            ->when($request->filled('payment_id'), function ($q) use ($request) {
+                $q->where('purchases.payment_id', $request->payment_id);
+            })
+
+            ->when($request->filled('warehouse_id'), function ($q) use ($request) {
+                $q->where('purchases.warehouse_id', $request->warehouse_id);
+            })
+
+            ->when($request->filled('product_search'), function ($q) use ($request) {
+
+                $keyword = $request->product_search;
+
+                $q->join('purchase_details', 'purchases.id', '=', 'purchase_details.purchase_id')
+                  ->join('products', 'purchase_details.product_id', '=', 'products.id')
+                  ->where(function ($sub) use ($keyword) {
+                      $sub->where('products.barcode', $keyword)
+                          ->orWhere('products.name', 'like', "%{$keyword}%");
+                  });
+            })
+
+            ->when($request->filled('start_date') && $request->filled('end_date'), function ($q) use ($request) {
+                $q->whereBetween('purchases.purchase_date', [$request->start_date, $request->end_date]);
+            })
+
+            ->when($request->filled('start_date') && !$request->filled('end_date'), function ($q) use ($request) {
+                $q->whereDate('purchases.purchase_date', '>=', $request->start_date);
+            })
+
+            ->when($request->filled('end_date') && !$request->filled('start_date'), function ($q) use ($request) {
+                $q->whereDate('purchases.purchase_date', '<=', $request->end_date);
+            })
+
+            ->distinct();
+    }
+
+    public function export(Request $request)
+    {
+        $purchases = PurchasesController::build($request)
+            ->select('purchases.*')
+            ->with(['supplier','details.product'])
+            ->orderByDesc('purchases.purchase_date')
+            ->get();
+
+        return PurchaseResource::collection($purchases);
+    }
+
+    public function dashboard(Request $request)
+    {
+        $query = PurchasesController::build($request);
+
+        $stats = (clone $query)
+            ->selectRaw("
+                COUNT(DISTINCT purchases.id) as total_invoice,
+                COALESCE(SUM(purchases.total_amount),0) as total_purchases,
+                COALESCE(SUM(CASE WHEN purchases.payment_id = 1 THEN purchases.total_amount END),0) as total_cash,
+                COALESCE(SUM(CASE WHEN purchases.payment_id = 4 THEN purchases.total_amount END),0) as total_kpay,
+                COALESCE(SUM(CASE WHEN purchases.payment_id = 2 THEN purchases.total_amount END),0) as total_credit
+            ")
+            ->first();
+
+        return response()->json($stats);
+    }
+    
 }
