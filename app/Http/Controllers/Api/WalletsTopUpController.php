@@ -56,6 +56,7 @@ class WalletsTopUpController extends Controller
         DB::beginTransaction();
         try {
             $topup = WalletTopUp::create([
+                "id" => $request->id, // Will be auto-generated if not provided
                 "customer_id" => $request->customer_id,
                 "amount" => $request->amount,
                 "payment_id" => $request->payment_id,
@@ -72,7 +73,7 @@ class WalletsTopUpController extends Controller
             $customer->save();
 
             // Create customer transaction
-            $req = CustomerTransaction::create([
+            CustomerTransaction::create([
                 "customer_id" => $topup->customer_id,
                 "reference_id"=> $topup->id,
                 "type" => "top-up",

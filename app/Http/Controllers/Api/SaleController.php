@@ -299,14 +299,12 @@ class SaleController extends Controller
             $oldTotal  = $sale->total_amount;
             $oldPayment= $sale->payment_id;
 
-            // Delete old sale details
-            SaleDetail::where('sale_id', $sale->id)->delete();
-
             /* Recalculate New Total */
 
             $totalAmount = 0;
 
             if ($request->products) {
+
                 /* RESTORE OLD STOCK (Rollback Previous Deduction) */
                 foreach ($sale->details as $detail) {
 
@@ -327,6 +325,9 @@ class SaleController extends Controller
                     //     'created_by' => $updatedBy,
                     // ]);
                 }
+
+                // Delete old sale details
+                SaleDetail::where('sale_id', $sale->id)->delete();
 
                 foreach ($request->products as $item) {
 
