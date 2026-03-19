@@ -62,15 +62,17 @@ class PromotionsController extends Controller
         // }
 
         $promotion = Promotion::create([
-            'name'           => $request->name,
-            'description'    => $request->description,
-            'discount_type'  => $request->discount_type,
+            'id' => $request->id,
+            'name' => $request->name,
+            'description' => $request->description,
+            'discount_type' => $request->discount_type,
             'discount_value' => $request->discount_value,
-            'start_at'       => $request->start_at,
-            'end_at'         => $request->end_at,
-            'status_id'      => $request->status_id,
-            'created_by'     => $request->created_by,
-            'updated_by'     => $request->updated_by ?? $request->created_by
+            'start_at' => $request->start_at,
+            'end_at' => $request->end_at,
+            'status_id' => $request->status_id,
+            'created_by' => $request->created_by,
+            'updated_by' => $request->updated_by ?? $request->created_by,
+            'synced_at' => now()
         ]);
 
         if ($request->products) {
@@ -91,16 +93,16 @@ class PromotionsController extends Controller
         $promotion = Promotion::findOrFail($id);
 
         $request->validate([
-            'name'            => 'sometimes|required|string|max:255',
-            'description'     => 'nullable|string',
-            'discount_type'   => 'sometimes|required|in:PERCENT,AMOUNT',
-            'discount_value'  => 'sometimes|required|numeric',
-            'start_at'        => 'sometimes|required|date',
-            'end_at'          => 'sometimes|required|date',
-            'products'        => 'nullable|array',
-            'products.*'      => 'integer|exists:products,id',
-            'created_by'      => 'sometimes|required|exists:users,id',
-            'updated_by'      => 'nullable|exists:users,id'
+            'name' => 'sometimes|required|string|max:255',
+            'description' => 'nullable|string',
+            'discount_type' => 'sometimes|required|in:PERCENT,AMOUNT',
+            'discount_value' => 'sometimes|required|numeric',
+            'start_at' => 'sometimes|required|date',
+            'end_at' => 'sometimes|required|date',
+            'products' => 'nullable|array',
+            'products.*' => 'integer|exists:products,id',
+            'created_by' => 'sometimes|required|exists:users,id',
+            'updated_by' => 'nullable|exists:users,id'
         ]);
 
         // If products are being changed, check conflicts
@@ -119,14 +121,14 @@ class PromotionsController extends Controller
         // }
 
         $promotion->update([
-            'name'           => $request->name ?? $promotion->name,
-            'description'    => $request->description ?? $promotion->description,
-            'discount_type'  => $request->discount_type ?? $promotion->discount_type,
+            'name' => $request->name ?? $promotion->name,
+            'description' => $request->description ?? $promotion->description,
+            'discount_type' => $request->discount_type ?? $promotion->discount_type,
             'discount_value' => $request->discount_value ?? $promotion->discount_value,
-            'status_id'      => $request->status_id ?? $promotion->status_id,
-            'start_at'       => $request->start_at ?? $promotion->start_at,
-            'end_at'         => $request->end_at ?? $promotion->end_at,
-            'updated_by'     => $request->updated_by ?? $promotion->updated_by
+            'status_id' => $request->status_id ?? $promotion->status_id,
+            'start_at' => $request->start_at ?? $promotion->start_at,
+            'end_at' => $request->end_at ?? $promotion->end_at,
+            'updated_by' => $request->updated_by ?? $promotion->updated_by
         ]);
 
         if ($request->has('products')) {
