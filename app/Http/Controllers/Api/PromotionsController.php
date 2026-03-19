@@ -9,6 +9,7 @@ use App\Models\Status;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 
 class PromotionsController extends Controller
 {
@@ -279,6 +280,101 @@ class PromotionsController extends Controller
                 'error' => $e->getMessage()
             ], 500);
         }
+    }
+
+    public function syncToCloud(Request $request)
+    {
+
+        $cloudApiUrl = config('services.cloud.url') . '/api/promotions';
+        $apiToken    = config('services.cloud.token');
+
+        $synced = [];
+        $failed = [];
+
+        Promotion::with('products')
+            ->where('is_synced', false)
+            ->orderBy('id')
+            ->chunkById(30, function ($promotions) use ($cloudApiUrl, $apiToken, $request, &$synced, &$failed) {
+
+                foreach ($promotions as $promotion) {
+
+                    try {
+
+                        DB::beginTransaction();
+
+                        $promotion = Promotion::lockForUpdate()->find($promotion->id);
+
+                        if ($promotion->is_synced) {
+                            DB::commit();
+                            continue;
+                        }
+
+                        Log::info('Processing promotion for sync', ['promotion_id' => $promotion->id, 'is_synced' => $promotion->is_synced]);
+
+                        $payload = [
+                            'id' => $promotion->id,
+                            'name' => $promotion->name,
+                            'description' => $promotion->description,
+                            'discount_type' => $promotion->discount_type,
+                            'discount_value' => (float) $promotion->discount_value,
+                            'start_at' => $promotion->start_at,
+                            'end_at' => $promotion->end_at,
+                            'status_id' => $promotion->status_id,
+                            'created_by' => $promotion->created_by,
+                            'updated_by' => $promotion->updated_by,
+                            'products' => $promotion->products->map(function ($product) {
+                                return $product->id;
+                            })->toArray()
+                        ];
+
+                        $response = Http::withToken($apiToken)
+                            ->post($cloudApiUrl, $payload);
+                        
+                        $data = $response->json('data') ?? null;
+
+                        if ($data) {
+                            
+                            $promotion->update([
+                                'is_synced' => true,
+                                'synced_at' => now(),
+                                'updated_by' => $request->updated_by
+                            ]);
+
+                            DB::commit();
+
+                            $synced[] = $promotion->id;
+
+                        } else {
+
+                            DB::rollBack();
+
+                            $failed[] = [
+                                'id' => $promotion->id,
+                                'error' => $response->body()
+                            ];
+
+                        }
+                    } catch (\Throwable $e) { 
+
+                        DB::rollBack();
+
+                        $failed[] = [
+                            'id' => $promotion->id,
+                            'error' => $e->getMessage()
+                        ];
+
+                    }
+
+                }
+            });
+        
+        return response()->json([
+            'message' => 'Sync process completed',
+            'synced' => count($synced),
+            'failed' => count($failed),
+            'failed_details' => $failed
+        ]);
+
     }
 
     // public function syncFromCloud(Request $request)

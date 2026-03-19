@@ -22,7 +22,9 @@ class Promotion extends Model
         'void_at',
         'void_by',
         'created_by',
-        'updated_by'
+        'updated_by',
+        'is_synced',
+        'synced_at'
     ];
 
     public function status() {

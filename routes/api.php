@@ -120,6 +120,7 @@ Route::middleware(['auth:sanctum'])->group(function () {
 
     Route::post('/promotions/checkprice', [PromotionsController::class, 'checkPrice']);
     Route::post('/promotions/sync', [PromotionsController::class, 'syncFromCloud']);
+    Route::post('/promotions/sync_to_cloud', [PromotionsController::class, 'syncToCloud']);
     Route::apiResource('/promotions', PromotionsController::class);
 
     Route::post('/wallets/sync_to_cloud', [WalletsTopUpController::class, 'syncToCloud']);
