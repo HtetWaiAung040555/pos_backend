@@ -18,7 +18,7 @@ return new class extends Migration
             $table->foreignId('inventory_id')->constrained('inventories')->restrictOnDelete();
             $table->foreignId('product_id')->constrained('products')->restrictOnDelete();
             $table->integer('quantity');
-            $table->decimal('price',11,2);
+            $table->decimal('price',11,6);
             $table->decimal('total',11,2);
             $table->timestamps();
         });

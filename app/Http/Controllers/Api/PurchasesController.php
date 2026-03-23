@@ -348,10 +348,10 @@ class PurchasesController extends Controller
                         'inventory_id' => $inventory?->id ?? $negInv?->id ?? null,
                         'product_id' => $item['product_id'],
                         'quantity' => $item['quantity'],
-                        'price' => $product->purchase_price,
-                        'total' => $product->purchase_price * $item['quantity'],
+                        'price' => $item['purchase_price'],
+                        'total' => $item['purchase_price'] * $item['quantity'],
                     ]);
-                    $totalAmount += $product->purchase_price * $item['quantity'];
+                    $totalAmount += $item['purchase_price'] * $item['quantity'];
                 }
             } else {
                 $totalAmount = $purchase->total_amount;

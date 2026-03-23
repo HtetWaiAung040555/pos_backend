@@ -32,12 +32,27 @@ class PurchaseDetailResource extends JsonResource
                 'old_price' => $this->product->old_price
             ] : null,
 
-            'price'    => $this->price,
+            'price'    => $this->formatPrice($this->price),
             'quantity' => $this->quantity,
             'total'    => $this->total,
 
             'created_at' => $this->toLocalDateTime($this->created_at),
             'updated_at' => $this->toLocalDateTime($this->updated_at),
         ];
+    }
+
+    private function formatPrice($price): int|float|string|null
+    {
+        if ($price === null) {
+            return 0;
+        }
+
+        $trimmed = rtrim(rtrim((string) $price, '0'), '.');
+
+        if ($trimmed === '' || $trimmed === '-0') {
+            return 0;
+        }
+
+        return is_numeric($trimmed) ? $trimmed + 0 : $trimmed;
     }
 }
