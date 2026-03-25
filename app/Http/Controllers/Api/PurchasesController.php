@@ -97,7 +97,7 @@ class PurchasesController extends Controller
             foreach ($request->products as $item) {
 
                 $product = Product::findOrFail($item['product_id']);
-                $price = $product->purchase_price;
+                $price = $item['purchase_price'];
 
                 $remainingQty = $item['quantity'];
 
@@ -116,6 +116,7 @@ class PurchasesController extends Controller
                     $offsetQty = min(abs($negInv->qty), $remainingQty);
 
                     $negInv->qty += $offsetQty;
+                    $negInv->expired_date = $expiredDate; // Update expired date if provided
                     $negInv->updated_by = $request->created_by;
                     $negInv->save();
 
@@ -127,6 +128,15 @@ class PurchasesController extends Controller
                         'quantity_change' => $offsetQty,
                         'type'            => 'in',
                         'created_by'      => $request->created_by
+                    ]);
+
+                    PurchaseDetail::create([
+                        'purchase_id' => $purchase->id,
+                        'inventory_id' => $negInv->id,
+                        'product_id' => $item['product_id'],
+                        'quantity' => $offsetQty,
+                        'price' => $price,
+                        'total' => $price * $offsetQty,
                     ]);
 
                     $remainingQty -= $offsetQty;
@@ -153,6 +163,16 @@ class PurchasesController extends Controller
                             'type'            => 'in',
                             'created_by'      => $request->created_by
                         ]);
+
+                        PurchaseDetail::create([
+                            'purchase_id' => $purchase->id,
+                            'inventory_id' => $existingInventory->id,
+                            'product_id' => $item['product_id'],
+                            'quantity' => $remainingQty,
+                            'price' => $price,
+                            'total' => $price * $remainingQty,
+                        ]);
+
                     } else {
                         $inventory = Inventory::create([
                             'product_id'   => $item['product_id'],
@@ -172,17 +192,18 @@ class PurchasesController extends Controller
                             'type'            => 'in',
                             'created_by'      => $request->created_by
                         ]);
+
+                        PurchaseDetail::create([
+                            'purchase_id' => $purchase->id,
+                            'inventory_id' => $inventory->id,
+                            'product_id' => $item['product_id'],
+                            'quantity' => $remainingQty,
+                            'price' => $price,
+                            'total' => $price * $remainingQty,
+                        ]);
+
                     }
                 }
-            
-                PurchaseDetail::create([
-                    'purchase_id' => $purchase->id,
-                    'inventory_id' => $existingInventory -> id ?? $inventory->id ?? $negInv->id,
-                    'product_id' => $item['product_id'],
-                    'quantity' => $item['quantity'],
-                    'price' => $price,
-                    'total' => $price * $item['quantity'],
-                ]);
 
             }
 
@@ -290,6 +311,7 @@ class PurchasesController extends Controller
                         $offsetQty = min(abs($negInv->qty), $remainingQty);
 
                         $negInv->increment('qty', $offsetQty);
+                        $negInv->expired_date = $item['expired_date'] ?? null;
                         $negInv->update(['updated_by' => $request->updated_by]);
 
                         StockTransaction::create([
@@ -300,6 +322,16 @@ class PurchasesController extends Controller
                             'quantity_change' => $offsetQty,
                             'type'            => 'in',
                             'created_by'      => $request->updated_by,
+                        ]);
+
+                        /* Store Purchase Detail */
+                        PurchaseDetail::create([
+                            'purchase_id' => $purchase->id,
+                            'inventory_id' => $negInv->id,
+                            'product_id' => $item['product_id'],
+                            'quantity' => $offsetQty,
+                            'price' => $item['purchase_price'],
+                            'total' => $item['purchase_price'] * $offsetQty,
                         ]);
 
                         $remainingQty -= $offsetQty;
@@ -340,17 +372,18 @@ class PurchasesController extends Controller
                             'type'            => 'in',
                             'created_by'      => $request->updated_by,
                         ]);
+
+                        /* Store Purchase Detail */
+                        PurchaseDetail::create([
+                            'purchase_id' => $purchase->id,
+                            'inventory_id' => $inventory->id,
+                            'product_id' => $item['product_id'],
+                            'quantity' => $remainingQty,
+                            'price' => $item['purchase_price'],
+                            'total' => $item['purchase_price'] * $remainingQty,
+                        ]);
                     }
 
-                    /* Store Purchase Detail */
-                    PurchaseDetail::create([
-                        'purchase_id' => $purchase->id,
-                        'inventory_id' => $inventory?->id ?? $negInv?->id ?? null,
-                        'product_id' => $item['product_id'],
-                        'quantity' => $item['quantity'],
-                        'price' => $item['purchase_price'],
-                        'total' => $item['purchase_price'] * $item['quantity'],
-                    ]);
                     $totalAmount += $item['purchase_price'] * $item['quantity'];
                 }
             } else {
