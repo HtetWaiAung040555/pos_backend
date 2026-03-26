@@ -11,29 +11,32 @@ use Illuminate\Support\Facades\DB;
 
 class PromotionsController extends Controller
 {
+
     public function index()
     {
         $now = now();
 
-        $inactiveStatus = Status::where('name', 'inactive')->value('id');
-        $activeStatus   = Status::where('name', 'active')->value('id');
+        $inactiveStatusId = Status::where('name', 'inactive')->value('id');
+        $activeStatusId   = Status::where('name', 'active')->value('id');
 
-        DB::transaction(function () use ($now, $inactiveStatus, $activeStatus) {
+        /* Activate promotions */
+        Promotion::whereNull('void_at')
+            ->where('start_at', '<=', $now)
+            ->where('end_at', '>=', $now)
+            ->where('status_id', '!=', $activeStatusId)
+            ->update(['status_id' => $activeStatusId]);
 
-            Promotion::whereNull('void_at')
-                ->where(function ($q) use ($now) {
-                    $q->where('start_at', '>', $now)
-                    ->orWhere('end_at', '<', $now);
-                })
-                ->update(['status_id' => $inactiveStatus]);
+        /* Deactivate promotions */
+        Promotion::whereNull('void_at')
+            ->where(function ($q) use ($now) {
+                $q->where('start_at', '>', $now)
+                ->orWhere('end_at', '<', $now);
+            })
+            ->where('status_id', '!=', $inactiveStatusId)
+            ->update(['status_id' => $inactiveStatusId]);
 
-            Promotion::whereNull('void_at')
-                ->where('start_at', '<=', $now)
-                ->where('end_at', '>=', $now)
-                ->update(['status_id' => $activeStatus]);
-        });
+        $promotions = Promotion::with('products')->latest()->get();
 
-        $promotions = Promotion::with('products')->get();
         return PromotionResource::collection($promotions);
     }
 
