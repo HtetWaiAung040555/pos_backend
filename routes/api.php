@@ -120,6 +120,7 @@ Route::middleware(['auth:sanctum'])->group(function () {
 
     Route::apiResource('/customers_transactions', CustomerTransactionController::class);
 
+    Route::post('/pricechanges/check_sales_price', [PriceChangesController::class, 'runSalesPriceChangeCheck']);
     Route::apiResource('/pricechanges', PriceChangesController::class);
 
     Route::post('/promotions/checkprice', [PromotionsController::class, 'checkPrice']);

@@ -13,21 +13,115 @@ use Illuminate\Support\Facades\DB;
 
 class PriceChangesController extends Controller
 {
+    /**
+     * Apply started sales price changes once their start time is reached.
+     *
+     * Idempotency is ensured by updating only products whose current sale price
+     * is still different from the pivot new_price.
+     */
+    public function applyStartedSalesPriceChanges(): array
+    {
+        $now = now();
+        $activeStatusId = Status::whereRaw('LOWER(name) = ?', ['active'])->value('id');
+        $appliedStatusId = Status::whereRaw('LOWER(name) = ?', ['applied'])->value('id');
+        $appliedPriceChanges = 0;
+        $failedPriceChanges = 0;
+        $appliedProducts = 0;
+
+        if (!$activeStatusId) {
+            return [
+                'applied_price_changes' => $appliedPriceChanges,
+                'failed_price_changes' => $failedPriceChanges,
+                'applied_products' => $appliedProducts,
+                'checked_at' => $now->toDateTimeString(),
+            ];
+        }
+
+        $startedSalesChanges = PriceChange::query()
+            ->where('type', 'sale')
+            ->whereNull('void_at')
+            ->where('status_id', $activeStatusId)
+            ->whereNotNull('start_at')
+            ->where('start_at', '<=', $now)
+            ->get();
+
+        foreach ($startedSalesChanges as $priceChange) {
+            try {
+                DB::transaction(function () use ($priceChange, $activeStatusId, $appliedStatusId, &$appliedPriceChanges, &$appliedProducts) {
+                    $lockedPriceChange = PriceChange::with('products')
+                        ->lockForUpdate()
+                        ->findOrFail($priceChange->id);
+
+                    foreach ($lockedPriceChange->products as $linkedProduct) {
+                        $product = Product::lockForUpdate()->findOrFail($linkedProduct->id);
+
+                        $newSalePrice = (float) $linkedProduct->pivot->new_price;
+
+                        // Skip already-applied values so running this method multiple times is safe.
+                        if ((float) $product->price === $newSalePrice) {
+                            continue;
+                        }
+
+                        if ((float) $product->old_price === 0.0) {
+                            $product->old_price = $product->price;
+                        }
+
+                        $product->price = $newSalePrice;
+                        $product->save();
+                        $appliedProducts++;
+                    }
+
+                    if ($appliedStatusId) {
+                        $lockedPriceChange->status_id = $appliedStatusId;
+                    } elseif ($activeStatusId) {
+                        $lockedPriceChange->status_id = $activeStatusId;
+                    }
+
+                    $lockedPriceChange->save();
+                    $appliedPriceChanges++;
+                });
+            } catch (\Throwable $e) {
+                $failedPriceChanges++;
+
+                // Keep failed executions in Active so they can be retried.
+                if ($activeStatusId) {
+                    PriceChange::whereKey($priceChange->id)->update(['status_id' => $activeStatusId]);
+                }
+            }
+        }
+
+        return [
+            'applied_price_changes' => $appliedPriceChanges,
+            'failed_price_changes' => $failedPriceChanges,
+            'applied_products' => $appliedProducts,
+            'checked_at' => $now->toDateTimeString(),
+        ];
+    }
+
+    public function runSalesPriceChangeCheck()
+    {
+        $result = $this->applyStartedSalesPriceChanges();
+
+        return response()->json([
+            'message' => 'Sales price change check completed.',
+            'result' => $result,
+        ]);
+    }
+
     public function index(Request $request)
     {
+        $this->applyStartedSalesPriceChanges();
+
         $now = now();
 
         $inactiveStatus = Status::where('name', 'inactive')->value('id');
-        // $activeStatus   = Status::where('name', 'active')->value('id');
+        $activeStatus   = Status::where('name', 'active')->value('id');
 
         DB::transaction(function () use ($now, $inactiveStatus) {
 
             PriceChange::whereNull('void_at')
-                ->where(function ($q) use ($now) {
-                    $q->where('start_at', '>', $now)
-                    ->orWhere('end_at', '<', $now);
-                })
-                ->update(['status_id' => $inactiveStatus]);
+                ->where('start_at', '>', $now);
+                //->update(['status_id' => $inactiveStatus]);
 
             // PriceChange::whereNull('void_at')
             //     ->where('start_at', '<=', $now)
@@ -46,6 +140,8 @@ class PriceChangesController extends Controller
 
     public function store(Request $request)
     {
+        $activeStatusId = Status::whereRaw('LOWER(name) = ?', ['active'])->value('id');
+
         $request->validate([
             'description' => 'nullable|string',
             'type' => 'required|in:sale,purchase',
@@ -60,74 +156,33 @@ class PriceChangesController extends Controller
             'start_at' => $request->start_at ?: null,
             'end_at' => $request->end_at ?: null,
         ]);
-        
-        // $start = $request->start_at ? Carbon::parse($request->start_at) : now();
-        // $end = $request->end_at ? Carbon::parse($request->end_at) : now();
-
-        // $conflictingProducts = [];
-        // foreach ($request->products as $item) {
-        //     $product = Product::findOrFail($item['product_id']);
-
-        //     $hasActive = $product->priceChanges()
-        //         ->where('type', $request->type)
-        //         ->where('status_id', 1)
-        //         ->whereNull('void_at')
-        //         ->where(function ($q) use ($start, $end) {
-        //             $q->where(function ($q2) use ($start, $end) {
-        //                 $q2->whereNull('start_at')
-        //                 ->orWhere('start_at', '<=', $end);
-        //             })
-        //             ->where(function ($q2) use ($start, $end) {
-        //                 $q2->whereNull('end_at')
-        //                 ->orWhere('end_at', '>=', $start);
-        //             });
-        //         })
-        //         ->exists();
-
-        //     if ($hasActive) {
-        //         $conflictingProducts[] = $product->name;
-        //     }
-        // }
-
-        // // Return 422 if any product is already in a price change
-        // if (!empty($conflictingProducts)) {
-        //     return response()->json([
-        //         'errors' => [
-        //             'message' => 'Some products already have an active price change.',
-        //             'products' => $conflictingProducts
-        //         ]
-        //     ], 422);
-        // }
 
         // Create the price change inside transaction
-        $priceChange = DB::transaction(function () use ($request) {
+        $priceChange = DB::transaction(function () use ($request, $activeStatusId) {
 
             $priceChange = PriceChange::create([
                 'description' => $request->description,
                 'type' => $request->type,
                 'start_at' => $request->start_at,
                 'end_at' => $request->end_at,
-                'status_id' => $request->status_id,
+                'status_id' => $request->status_id ?? $activeStatusId,
                 'created_by' => $request->created_by,
                 'updated_by' => $request->updated_by ?? $request->created_by
             ]);
 
-            // Apply price changes
+            // For sale type, only register target prices; actual price update is handled by scheduler/check method.
             foreach ($request->products as $item) {
 
                 $product = Product::lockForUpdate()->findOrFail($item['product_id']);
 
                 if ($priceChange->type === 'sale') {
-                    $product->old_price = $product->price == 0 ? $item['new_price'] : $product->price;  
-                    $product->price = $item['new_price'];
-                    $oldPrice = $product->old_price;
+                    $oldPrice = $product->price;
                 } else {
                     $product->old_purchase_price = $product->purchase_price == 0 ? $item['new_price'] : $product->purchase_price;
                     $product->purchase_price = $item['new_price'];
                     $oldPrice = $product->old_purchase_price;
+                    $product->save();
                 }
-
-                $product->save();
 
                 // Save history
                 $priceChange->products()->attach($product->id, [
@@ -183,44 +238,6 @@ class PriceChangesController extends Controller
             'end_at' => $request->end_at ?: null,
         ]);
 
-        // $start = $request->start_at ? Carbon::parse($request->start_at) : now();
-        // $end = $request->end_at ? Carbon::parse($request->end_at) : now();
-
-        // // Check for conflicting products if products provided
-        // if ($request->has('products')) {
-        //     $conflictingProducts = [];
-        //     foreach ($request->products as $item) {
-        //         $product = Product::findOrFail($item['product_id']);
-        //         $hasActive = $product->priceChanges()
-        //             ->where('type', $request->type ?? $priceChange->type)
-        //             ->where('status_id', 1)
-        //             ->whereNull('void_at')
-        //             ->where('price_changes.id', '!=', $priceChange->id)
-        //             ->where(function ($q) use ($start, $end) {
-        //                 $q->where(function ($q2) use ($start, $end) {
-        //                     $q2->whereNull('start_at')->orWhere('start_at', '<=', $end);
-        //                 })
-        //                 ->where(function ($q2) use ($start, $end) {
-        //                     $q2->whereNull('end_at')->orWhere('end_at', '>=', $start);
-        //                 });
-        //             })
-        //             ->exists();
-
-        //         if ($hasActive) {
-        //             $conflictingProducts[] = $product->name;
-        //         }
-        //     }
-
-        //     if (!empty($conflictingProducts)) {
-        //         return response()->json([
-        //             'errors' => [
-        //                 'message' => 'Some products already have an active price change.',
-        //                 'products' => $conflictingProducts
-        //             ]
-        //         ], 422);
-        //     }
-        // }
-
         DB::transaction(function () use ($request, $priceChange) {
             // Update main fields
             $priceChange->update([
@@ -240,16 +257,13 @@ class PriceChangesController extends Controller
                     $product = Product::lockForUpdate()->findOrFail($item['product_id']);
 
                     if ($priceChange->type === 'sale') {
-                        //$product->old_price = $product->price;
-                        $product->price = $item['new_price'];
-                        $oldPrice = $product->old_price;
+                        // For sale type, keep product price unchanged; scheduler/check method applies later.
+                        $oldPrice = $product->price;
                     } else {
-                        //$product->old_purchase_price = $product->purchase_price;
                         $product->purchase_price = $item['new_price'];
                         $oldPrice = $product->old_purchase_price;
+                        $product->save();
                     }
-
-                    $product->save();
 
                     $priceChange->products()->attach($product->id, [
                         'old_price' => $oldPrice,

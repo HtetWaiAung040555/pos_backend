@@ -10,10 +10,10 @@ class StatusSeeder extends Seeder
 {
     public function run(): void
     {
-        $statuses = ['Active', 'Inactive', 'Disabled', 'Pending', 'Hold', 'Unpaid', 'Complete', 'Void'];
+        $statuses = ['Active', 'Inactive', 'Disabled', 'Pending', 'Hold', 'Unpaid', 'Complete', 'Void', 'Applied'];
 
         foreach ($statuses as $status) {
-            Status::create(['name' => $status]);
+            Status::firstOrCreate(['name' => $status]);
         }
     }
 }
