@@ -10,6 +10,7 @@ use App\Models\Status;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 class PriceChangesController extends Controller
 {
@@ -27,6 +28,12 @@ class PriceChangesController extends Controller
         $appliedPriceChanges = 0;
         $failedPriceChanges = 0;
         $appliedProducts = 0;
+
+        Log::info('Running sales price change check', [
+            'timestamp' => $now->toDateTimeString(),
+            'active_status_id' => $activeStatusId,
+            'applied_status_id' => $appliedStatusId,
+        ]);
 
         if (!$activeStatusId) {
             return [
@@ -53,9 +60,9 @@ class PriceChangesController extends Controller
                         ->findOrFail($priceChange->id);
 
                     foreach ($lockedPriceChange->products as $linkedProduct) {
-                        $product = Product::lockForUpdate()->findOrFail($linkedProduct->id);
+                        $product = Product::lockForUpdate()->findOrFail($linkedProduct->product_id);
 
-                        $newSalePrice = (float) $linkedProduct->pivot->new_price;
+                        $newSalePrice = (float) $linkedProduct->new_price;
 
                         // Skip already-applied values so running this method multiple times is safe.
                         if ((float) $product->price === $newSalePrice) {
@@ -112,24 +119,24 @@ class PriceChangesController extends Controller
     {
         $this->applyStartedSalesPriceChanges();
 
-        $now = now();
+        // $now = now();
 
-        $inactiveStatus = Status::where('name', 'inactive')->value('id');
-        $activeStatus   = Status::where('name', 'active')->value('id');
+        // $inactiveStatus = Status::where('name', 'inactive')->value('id');
+        // $activeStatus   = Status::where('name', 'active')->value('id');
 
-        DB::transaction(function () use ($now, $inactiveStatus) {
+        // DB::transaction(function () use ($now, $inactiveStatus) {
 
-            PriceChange::whereNull('void_at')
-                ->where('start_at', '>', $now);
-                //->update(['status_id' => $inactiveStatus]);
+        //     PriceChange::whereNull('void_at')
+        //         ->where('start_at', '>', $now);
+        //         //->update(['status_id' => $inactiveStatus]);
 
-            // PriceChange::whereNull('void_at')
-            //     ->where('start_at', '<=', $now)
-            //     ->where('end_at', '>=', $now)
-            //     ->update(['status_id' => $activeStatus]);
-        });
+        //     // PriceChange::whereNull('void_at')
+        //     //     ->where('start_at', '<=', $now)
+        //     //     ->where('end_at', '>=', $now)
+        //     //     ->update(['status_id' => $activeStatus]);
+        // });
 
-        $PriceChanges = PriceChange::with('products')
+        $PriceChanges = PriceChange::with('products.product.unit', 'products.product.category', 'products.product.status')
         ->when($request->filled('type'), function ($q) use ($request) {
             $q->where('type', $request->type);
         })
@@ -185,7 +192,8 @@ class PriceChangesController extends Controller
                 }
 
                 // Save history
-                $priceChange->products()->attach($product->id, [
+                $priceChange->products()->create([
+                    'product_id' => $product->id,
                     'old_price' => $oldPrice,
                     'new_price' => $item['new_price'],
                 ]);
@@ -200,9 +208,9 @@ class PriceChangesController extends Controller
             'createdBy',
             'updatedBy',
             'voidBy',
-            'products.unit',
-            'products.category',
-            'products.status',
+            'products.product.unit',
+            'products.product.category',
+            'products.product.status',
         ]);
 
         // Return resource
@@ -212,7 +220,7 @@ class PriceChangesController extends Controller
 
     public function show(string $id)
     {
-        $price_changes = PriceChange::with('products')->findOrFail($id);
+        $price_changes = PriceChange::with('products.product.unit', 'products.product.category', 'products.product.status')->findOrFail($id);
         return new PriceChangeResource($price_changes);
     }
     
@@ -238,6 +246,11 @@ class PriceChangesController extends Controller
             'end_at' => $request->end_at ?: null,
         ]);
 
+        Log::alert('Updating Price Change', [
+            'id' => $priceChange->id,
+            'request' => $request->all(),
+        ]);
+
         DB::transaction(function () use ($request, $priceChange) {
             // Update main fields
             $priceChange->update([
@@ -251,7 +264,7 @@ class PriceChangesController extends Controller
 
             // Update products if provided
             if ($request->has('products')) {
-                $priceChange->products()->detach();
+                $priceChange->products()->delete();
 
                 foreach ($request->products as $item) {
                     $product = Product::lockForUpdate()->findOrFail($item['product_id']);
@@ -265,7 +278,8 @@ class PriceChangesController extends Controller
                         $product->save();
                     }
 
-                    $priceChange->products()->attach($product->id, [
+                    $priceChange->products()->create([
+                        'product_id' => $product->id,
                         'old_price' => $oldPrice,
                         'new_price' => $item['new_price'],
                     ]);
@@ -279,9 +293,9 @@ class PriceChangesController extends Controller
             'createdBy',
             'updatedBy',
             'voidBy',
-            'products.unit',
-            'products.category',
-            'products.status',
+            'products.product.unit',
+            'products.product.category',
+            'products.product.status',
         ]);
 
         return new PriceChangeResource($priceChange);
@@ -292,18 +306,20 @@ class PriceChangesController extends Controller
         DB::beginTransaction();
     
         try {
-            $priceChange = PriceChange::with('products')->findOrFail($id);
+            $priceChange = PriceChange::with('products.product')->findOrFail($id);
     
             $voidStatus = \App\Models\Status::where('name', 'void')->firstOrFail();
     
             // Revert product prices before voiding
-            foreach ($priceChange->products as $product) {
+            foreach ($priceChange->products as $linkedProduct) {
+                $product = Product::lockForUpdate()->findOrFail($linkedProduct->product_id);
+
                 if ($priceChange->type === 'sale') {
                     // Revert sale price
-                    $product->price = $product->old_price;
+                    $product->price = $linkedProduct->old_price;
                 } else {
                     // Revert purchase price
-                    $product->purchase_price = $product->old_purchase_price;
+                    $product->purchase_price = $linkedProduct->old_price;
                 }
                 $product->save();
             }

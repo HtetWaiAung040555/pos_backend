@@ -22,6 +22,7 @@ class PriceChangeResource extends JsonResource
                 'id'   => $this->status->id,
                 'name' => $this->status->name,
             ] : null,
+            'products' => PriceChangeProductResource::collection($this->whenLoaded('products')),
             'void_at' => $this->toLocalDateTime($this->void_at),
             'void_by' => $this->voidBy ? [
                 'id' => $this->voidBy->id,
@@ -37,35 +38,31 @@ class PriceChangeResource extends JsonResource
             ] : null,
             'created_at' => $this->toLocalDateTime($this->created_at),
             'updated_at' => $this->toLocalDateTime($this->updated_at),
+
         ];
 
-        if ($this->relationLoaded('products')) {
-            $data['products'] = $this->products->map(function ($product) {
-                return [
-                    'id'    => $product->id,
-                    'name'  => $product->name,
-                    'unit'  => $product->unit ? [
-                        'id' => $product->unit->id,
-                        'name' => $product->unit->name,
-                    ] : null,
-                    'sec_prop' => $product->sec_prop,
-                    'purchase_price' => $product->purchase_price,
-                    'old_purchase_price' => $product->old_purchase_price,
-                    'price' => $product->price,
-                    'old_price' => $product->old_price,
-                    'barcode' => $product->barcode,
-                    'image_url' => $product->image ? url($product->image) : url('assets/img/products/default.png'),
-                    'status' => $product->status ? [
-                        'id'   => $product->status->id,
-                        'name' => $product->status->name,
-                    ] : null,
-                    'category' => $product->category ? [
-                        'id' => $product->category->id,
-                        'name' => $product->category->name,
-                    ] : null,
-                ];
-            });
-        }
+        // if ($this->relationLoaded('products')) {
+        //     $data['products'] = $this->products->map(function ($product) {
+        //         return [
+        //             'id'    => $product->id,
+        //             'name'  => $product->name,
+        //             'unit'  => $product->unit ? [
+        //                 'id' => $product->unit->id,
+        //                 'name' => $product->unit->name,
+        //             ] : null,
+        //             'purchase_price' => $product->purchase_price,
+        //             'old_purchase_price' => $product->old_purchase_price,
+        //             'price' => $product->price,
+        //             'old_price' => $product->old_price,
+        //             'barcode' => $product->barcode,
+        //             'image_url' => $product->image ? url($product->image) : url('assets/img/products/default.png'),
+        //             'category' => $product->category ? [
+        //                 'id' => $product->category->id,
+        //                 'name' => $product->category->name,
+        //             ] : null,
+        //         ];
+        //     });
+        // }
 
         $data['active'] = $this->start_at && $this->end_at && !$this->void_at
             ? now()->between($this->start_at, $this->end_at)
