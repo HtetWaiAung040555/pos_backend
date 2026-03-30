@@ -2,12 +2,17 @@
 
 namespace App\Models;
 
+use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
 class PriceChange extends Model
 {
     use HasFactory;
+
+    protected $table = 'price_changes';
+    protected $primaryKey = 'id';
+    public $incrementing = false;
 
     protected $fillable = [
         'description',
@@ -21,6 +26,30 @@ class PriceChange extends Model
         'updated_by'
     ];
 
+    protected static function boot()
+    {
+        parent::boot();
+
+        static::creating(function ($price_change) {
+            
+            if ($price_change->id) {
+                return;
+            }
+
+            $dateCode = Carbon::now()->format('dmy');
+
+            $userId = $price_change->created_by;
+
+            $last = self::where('id', 'like', "PC-{$userId}{$dateCode}%")
+                ->orderBy('id', 'desc')
+                ->first();
+
+            $nextNumber = $last ? intval(substr($last->id, -3)) + 1 : 1;
+
+            $price_change->id = 'PC-' . $userId . $dateCode . str_pad($nextNumber, 3, '0', STR_PAD_LEFT);
+        });
+    }
+
     public function status()
     {
         return $this->belongsTo(Status::class);
@@ -28,9 +57,7 @@ class PriceChange extends Model
 
     public function products()
     {
-        return $this->belongsToMany(Product::class, 'price_changes_products', 'price_change_id', 'product_id')
-            ->withPivot('old_price', 'new_price')
-            ->withTimestamps();
+        return $this->hasMany(PriceChangeProduct::class);
     }
 
     public function createdBy()

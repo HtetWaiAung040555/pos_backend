@@ -9,7 +9,7 @@ return new class extends Migration
     public function up(): void
     {
         Schema::create('price_changes', function (Blueprint $table) {
-            $table->id();
+             $table->string('id')->primary();
             $table->text('description')->nullable();
             $table->enum('type', ['sale','purchase'])->nullable();
             $table->dateTime('start_at')->nullable();
