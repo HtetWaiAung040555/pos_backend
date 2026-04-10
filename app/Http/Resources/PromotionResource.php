@@ -15,6 +15,10 @@ class PromotionResource extends JsonResource
             'id' => $this->id,
             'name' => $this->name,
             'description' => $this->description,
+            'promo_type' => $this->promo_type,
+            'condition_type' => $this->condition_type,
+            'promo_mode' => $this->promo_mode,
+            'max_reward_value' => $this->max_reward_value,
             'discount_type' => $this->discount_type,
             'discount_value' => $this->discount_value,
             'start_at' => $this->toLocalDateTime($this->start_at),
@@ -38,6 +42,8 @@ class PromotionResource extends JsonResource
             ],
             'created_at' => $this->toLocalDateTime($this->created_at),
             'updated_at' => $this->toLocalDateTime($this->updated_at),
+            'conditions' => PromotionConditionResource::collection($this->whenLoaded('conditions')),
+            'rewards' => PromotionRewardResource::collection($this->whenLoaded('rewards')),
         ];
 
         if ($this->relationLoaded('products')) {

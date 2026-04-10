@@ -15,6 +15,10 @@ class Promotion extends Model
         'id',
         'name',
         'description',
+        'promo_type',
+        'condition_type',
+        'promo_mode',
+        'max_reward_value',
         'discount_type',
         'discount_value',
         'start_at',
@@ -46,5 +50,15 @@ class Promotion extends Model
 
     public function voidBy(){
         return $this->belongsTo(User::class, 'void_by');
+    }
+
+    public function conditions()
+    {
+        return $this->hasMany(PromotionCondition::class);
+    }
+
+    public function rewards()
+    {
+        return $this->hasMany(PromotionReward::class);
     }
 }
