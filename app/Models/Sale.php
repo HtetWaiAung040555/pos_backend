@@ -21,6 +21,8 @@ class Sale extends Model
         'total_amount',
         'paid_amount',
         'due_amount',
+        'order_discount_amount',
+        'applied_promotions',
         'payment_id',
         'status_id',
         'remark',
@@ -34,6 +36,7 @@ class Sale extends Model
     ];
 
     protected $casts = [
+        'applied_promotions' => 'array',
         'sale_date' => 'datetime',
         'void_at' => 'datetime',
     ];

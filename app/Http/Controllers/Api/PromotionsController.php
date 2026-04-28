@@ -9,7 +9,6 @@ use App\Models\Status;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Validation\ValidationException;
 
 class PromotionsController extends Controller
 {
@@ -91,7 +90,9 @@ class PromotionsController extends Controller
                 }
 
                 DB::commit();
-                return response()->json($promotion, 201);
+                return (new PromotionResource($promotion))
+                ->response()
+                ->setStatusCode(201);
             }
 
             if (!empty($validated['tiers'])) {
@@ -153,10 +154,6 @@ class PromotionsController extends Controller
     public function show(string $id)
     {
         $promotion = Promotion::with(['products', 'conditions.product', 'rewards.product'])->findOrFail($id);
-
-        Log::info("Fetched promotion details for ID {$id}", [
-            'promotion' => new PromotionResource($promotion)
-        ]);
 
         return new PromotionResource($promotion);
     }
@@ -293,22 +290,238 @@ class PromotionsController extends Controller
         }
     }
 
+    // public function checkPrice(Request $request)
+    // {
+    //     $cartItems = collect($request->cart ?? []);
+
+    //     if ($cartItems->isEmpty()) {
+    //         return response()->json([
+    //             'product_discounts' => [],
+    //             'order_discount_amount' => 0,
+    //             'free_items' => []
+    //         ]);
+    //     }
+
+    //     $totalQty = $cartItems->sum('qty');
+    //     $totalAmount = $cartItems->sum(fn($i) => $i['qty'] * $i['price']);
+
+    //     $promotions = Promotion::with(['products', 'conditions', 'rewards.product'])
+    //         ->where('status_id', 1)
+    //         ->where('start_at', '<=', now())
+    //         ->where('end_at', '>=', now())
+    //         ->get();
+
+    //     $productDiscounts = [];
+    //     $orderDiscountAmount = 0;
+    //     $freeItems = [];
+
+    //     foreach ($promotions as $promotion) {
+
+    //         if ($promotion->promo_type === 'PRODUCT_DISCOUNT') {
+
+    //             foreach ($cartItems as $item) {
+
+    //                 $hasProduct = $promotion->products
+    //                     ->where('id', $item['product_id'])
+    //                     ->isNotEmpty();
+
+    //                 if (!$hasProduct) continue;
+
+    //                 $discount = $promotion->discount_type === 'PERCENT'
+    //                     ? ($item['price'] * $promotion->discount_value) / 100
+    //                     : $promotion->discount_value;
+
+    //                 $productDiscounts[] = [
+    //                     'product_id' => $item['product_id'],
+    //                     'promotion_id' => $promotion->id,
+    //                     'discount_amount' => $discount,
+    //                     'discount_type' => $promotion->discount_type,
+    //                     'discount_value' => $promotion->discount_value
+    //                 ];
+    //             }
+
+    //             continue;
+    //         }
+
+
+    //             $tiers = $promotion->conditions
+    //                 ->groupBy('tier');
+
+    //         if ($promotion->promo_mode === 'TIER') {
+    //             $tiers = $tiers->sortKeysDesc();
+    //         } else {
+    //             $tiers = $tiers->sortKeys(); 
+    //         }
+
+    //         foreach ($tiers as $tier => $conditions) {
+
+    //             $isEligible = true;
+    //             $multipliers = [];
+
+    //             foreach ($conditions as $condition) {
+
+    //                 $eligible = false;
+    //                 $multiplier = null;
+
+    //                 switch ($condition->condition_type) {
+
+    //                     case 'ITEM_QTY':
+    //                         $qty = $cartItems
+    //                             ->where('product_id', $condition->product_id)
+    //                             ->sum('qty');
+
+    //                         if ($qty >= $condition->target_value) {
+    //                             $eligible = true;
+    //                             $multiplier = floor($qty / $condition->target_value);
+    //                         }
+    //                         break;
+
+    //                     case 'ITEM_AMOUNT':
+    //                         $amount = $cartItems
+    //                             ->where('product_id', $condition->product_id)
+    //                             ->sum(fn($i) => $i['qty'] * $i['price']);
+
+    //                         if ($amount >= $condition->target_value) {
+    //                             $eligible = true;
+    //                             $multiplier = floor($amount / $condition->target_value);
+    //                         }
+    //                         break;
+
+    //                     case 'ORDER_AMOUNT':
+    //                         if ($totalAmount >= $condition->target_value) {
+    //                             $eligible = true;
+    //                             $multiplier = floor($totalAmount / $condition->target_value);
+    //                         }
+    //                         break;
+
+    //                     case 'ORDER_QTY':
+    //                         if ($totalQty >= $condition->target_value) {
+    //                             $eligible = true;
+    //                             $multiplier = floor($totalQty / $condition->target_value);
+    //                         }
+    //                         break;
+    //                 }
+
+    //                 if (!$eligible) {
+    //                     $isEligible = false;
+    //                     break;
+    //                 }
+
+    //                 if (!is_null($multiplier)) {
+    //                     $multipliers[] = $multiplier;
+    //                 }
+    //             }
+
+    //             if (!$isEligible) continue;
+
+    //             $multiplier = count($multipliers) ? min($multipliers) : 1;
+
+    //             if ($promotion->promo_type === 'ORDER_DISCOUNT') {
+
+    //                 $reward = $promotion->rewards
+    //                     ->where('tier', $tier)
+    //                     ->first();
+
+    //                 if (!$reward) continue;
+
+    //                 $discount = $reward->reward_value;
+
+    //                 if ($promotion->promo_mode === 'MULTIPLIER') {
+    //                     $discount *= $multiplier;
+    //                 }
+
+    //                 Log::info('Max Discount', [
+    //                     'calculated_discount' => $discount,
+    //                     'max_reward_value' => $promotion->max_reward_value
+    //                 ]);
+
+    //                 if (!is_null($promotion->max_reward_value)) {
+    //                     $discount = min($discount, $promotion->max_reward_value);
+    //                     Log::info("Applying max reward value cap for promotion ID {$promotion->id}", [
+    //                         'calculated_discount' => $discount,
+    //                         'max_reward_value' => $promotion->max_reward_value
+    //                     ]);
+    //                 }
+
+    //                 Log::info("Applying order discount for promotion ID {$promotion->id}", [
+    //                     'final_discount' => $discount
+    //                 ]);
+
+    //                 $orderDiscountAmount += $discount;
+
+    //                 if ($promotion->promo_mode === 'TIER') break;
+    //             }
+
+    //             if ($promotion->promo_type === 'FOC') {
+
+    //                 $tierRewards = $promotion->rewards
+    //                     ->where('tier', $tier);
+
+    //                 $totalFreeQty = collect($freeItems)->sum('qty');
+
+    //                 foreach ($tierRewards as $reward) {
+
+    //                     $qty = $reward->reward_qty;
+
+    //                     if ($promotion->promo_mode === 'MULTIPLIER') {
+    //                         $qty *= $multiplier;
+    //                     }
+
+    //                     if (!is_null($promotion->max_reward_value)) {
+
+    //                         $remainingQty = $promotion->max_reward_value - $totalFreeQty;
+
+    //                         if ($remainingQty <= 0) break;
+
+    //                         $qty = min($qty, $remainingQty);
+    //                     }
+
+    //                     $index = collect($freeItems)
+    //                         ->search(fn($i) => $i['product_id'] == $reward->product_id);
+
+    //                     if ($index !== false) {
+    //                         $freeItems[$index]['qty'] += $qty;
+    //                     } else {
+    //                         $freeItems[] = [
+    //                             'product_id' => $reward->product_id,
+    //                             'qty' => $qty
+    //                         ];
+    //                     }
+
+    //                     $totalFreeQty += $qty;
+    //                 }
+
+    //                 if ($promotion->promo_mode === 'TIER') break;
+    //             }
+    //         }
+    //     }
+
+    //     return response()->json([
+    //         'product_discounts' => $productDiscounts,
+    //         'order_discount_amount' => $orderDiscountAmount,
+    //         'free_items' => $freeItems
+    //     ]);
+    // }
+
     public function checkPrice(Request $request)
     {
         $cartItems = collect($request->cart ?? []);
 
         if ($cartItems->isEmpty()) {
             return response()->json([
-                'product_discounts' => [],
-                'order_discount_amount' => 0,
-                'free_items' => []
+                'items' => [],
+                'order' => [
+                    'total_discount' => 0,
+                    'applied_promotions' => []
+                ],
+                'foc_items' => []
             ]);
         }
 
         $totalQty = $cartItems->sum('qty');
         $totalAmount = $cartItems->sum(fn($i) => $i['qty'] * $i['price']);
 
-        $promotions = Promotion::with(['products', 'conditions', 'rewards.product'])
+        $promotions = Promotion::with(['products', 'conditions', 'rewards'])
             ->where('status_id', 1)
             ->where('start_at', '<=', now())
             ->where('end_at', '>=', now())
@@ -316,6 +529,7 @@ class PromotionsController extends Controller
 
         $productDiscounts = [];
         $orderDiscountAmount = 0;
+        $orderPromotions = [];
         $freeItems = [];
 
         foreach ($promotions as $promotion) {
@@ -346,15 +560,11 @@ class PromotionsController extends Controller
                 continue;
             }
 
+            $tiers = $promotion->conditions->groupBy('tier');
 
-                $tiers = $promotion->conditions
-                    ->groupBy('tier');
-
-            if ($promotion->promo_mode === 'TIER') {
-                $tiers = $tiers->sortKeysDesc();
-            } else {
-                $tiers = $tiers->sortKeys(); 
-            }
+            $tiers = $promotion->promo_mode === 'TIER'
+                ? $tiers->sortKeysDesc()
+                : $tiers->sortKeys();
 
             foreach ($tiers as $tier => $conditions) {
 
@@ -433,24 +643,17 @@ class PromotionsController extends Controller
                         $discount *= $multiplier;
                     }
 
-                    Log::info('Max Discount', [
-                        'calculated_discount' => $discount,
-                        'max_reward_value' => $promotion->max_reward_value
-                    ]);
-
                     if (!is_null($promotion->max_reward_value)) {
                         $discount = min($discount, $promotion->max_reward_value);
-                        Log::info("Applying max reward value cap for promotion ID {$promotion->id}", [
-                            'calculated_discount' => $discount,
-                            'max_reward_value' => $promotion->max_reward_value
-                        ]);
                     }
 
-                    Log::info("Applying order discount for promotion ID {$promotion->id}", [
-                        'final_discount' => $discount
-                    ]);
-
                     $orderDiscountAmount += $discount;
+
+                    $orderPromotions[] = [
+                        'promotion_id' => $promotion->id,
+                        'tier' => $tier,
+                        'discount' => $discount
+                    ];
 
                     if ($promotion->promo_mode === 'TIER') break;
                 }
@@ -471,7 +674,6 @@ class PromotionsController extends Controller
                         }
 
                         if (!is_null($promotion->max_reward_value)) {
-
                             $remainingQty = $promotion->max_reward_value - $totalFreeQty;
 
                             if ($remainingQty <= 0) break;
@@ -479,17 +681,13 @@ class PromotionsController extends Controller
                             $qty = min($qty, $remainingQty);
                         }
 
-                        $index = collect($freeItems)
-                            ->search(fn($i) => $i['product_id'] == $reward->product_id);
-
-                        if ($index !== false) {
-                            $freeItems[$index]['qty'] += $qty;
-                        } else {
-                            $freeItems[] = [
-                                'product_id' => $reward->product_id,
-                                'qty' => $qty
-                            ];
-                        }
+                        // ❗ DO NOT MERGE (important)
+                        $freeItems[] = [
+                            'product_id' => $reward->product_id,
+                            'qty' => $qty,
+                            'reward_id' => $reward->id,
+                            'promotion_id' => $promotion->id
+                        ];
 
                         $totalFreeQty += $qty;
                     }
@@ -500,9 +698,12 @@ class PromotionsController extends Controller
         }
 
         return response()->json([
-            'product_discounts' => $productDiscounts,
-            'order_discount_amount' => $orderDiscountAmount,
-            'free_items' => $freeItems
+            'items' => $productDiscounts,
+            'order' => [
+                'total_discount' => $orderDiscountAmount,
+                'applied_promotions' => $orderPromotions
+            ],
+            'foc_items' => $freeItems
         ]);
     }
     

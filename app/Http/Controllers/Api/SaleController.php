@@ -12,6 +12,7 @@ use App\Models\StockTransaction;
 use App\Models\CustomerTransaction;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 use function Symfony\Component\Clock\now;
 
@@ -52,6 +53,8 @@ class SaleController extends Controller
             'updated_by'  => 'nullable|exists:users,id',
             'sale_date'   => 'nullable|date',
             'warehouse_id'=> 'required|exists:warehouses,id',
+            'order_discount_amount' => 'nullable|numeric|min:0',
+            'applied_promotions' => 'nullable|array',
             'products'    => 'required|array|min:1',
             'products.*.product_id' => 'required|exists:products,id',
             'products.*.quantity'   => 'required|integer|min:1'
@@ -78,17 +81,28 @@ class SaleController extends Controller
 
             $totalAmount = 0;
 
-            foreach ($request->products as $item) {
+            // foreach ($request->products as $item) {
 
-                $price = !empty($item['promotion_id'])
-                    ? ($item['discount_price'] ?? ($item['price'] - ($item['discount_amount'] ?? 0)))
-                    : $item['price'];
+            //     $price = !empty($item['promotion_id'])
+            //         ? ($item['discount_price'] ?? ($item['price'] - ($item['discount_amount'] ?? 0)))
+            //         : $item['price'];
 
-                $totalAmount += $price * $item['quantity'];
-            }
+            //     $totalAmount += $price * $item['quantity'];
+            // }
+
+            $totalAmount = collect($request->products)->sum(function ($item) {
+                if (!empty($item['is_foc'])) return 0;
+
+                $price = $item['discount_price'] ?? $item['price'];
+
+                return $price * $item['quantity'];
+            });
 
             $paidAmount = $request->paid_amount ?? 0;
             $dueAmount  = max($paidAmount - $totalAmount, 0);
+
+            $orderDiscount = $request->order_discount_amount ?? 0;
+            $totalAmount = max($totalAmount - $orderDiscount, 0);
 
             /* Create Sale */
 
@@ -97,6 +111,8 @@ class SaleController extends Controller
                 'warehouse_id' => $warehouseId,
                 'customer_id' => $request->customer_id,
                 'total_amount' => $totalAmount,
+                'order_discount_amount' => $orderDiscount,
+                'applied_promotions' => $request->applied_promotions,
                 'paid_amount' => $paidAmount,
                 'due_amount' => $dueAmount,
                 'payment_id' => $request->payment_id,
@@ -119,9 +135,16 @@ class SaleController extends Controller
                 $product = $products[$item['product_id']];
                 $remainingQty = $item['quantity'];
 
+                $isFoc = !empty($item['is_foc']);
+                $unitPrice = $isFoc ? 0 : $item['price'];
+                $discountPrice = $isFoc ? 0 : ($item['discount_price'] ?? 0);
+                $discountAmount = $isFoc ? 0 : ($item['discount_amount'] ?? 0);
+
                 $price = !empty($item['promotion_id'])
-                    ? ($item['discount_price'] ?? ($item['price'] - ($item['discount_amount'] ?? 0)))
-                    : $item['price'];
+                    ? ($item['discount_price'] ?? ($unitPrice - $discountAmount))
+                    : $unitPrice;
+
+                Log::info("Price for product {$product->id}: $price (Unit: $unitPrice, Discount: $discountAmount, FOC: $isFoc)");
 
                 // FIFO inventories
                 $inventories = Inventory::where('product_id', $product->id)
@@ -146,10 +169,12 @@ class SaleController extends Controller
                         'inventory_id' => $inventory->id,
                         'product_id' => $product->id,
                         'quantity' => $deductQty,
-                        'price' => $item['price'],
-                        'discount_amount' => $item['discount_amount'] ?? 0,
-                        'discount_price' => $item['discount_price'] ?? 0,
+                        'price' => $unitPrice,
+                        'discount_amount' => $discountAmount,
+                        'discount_price' => $discountPrice,
                         'promotion_id' => $item['promotion_id'] ?? null,
+                        'is_foc' => $isFoc,
+                        'reward_id' => $item['reward_id'] ?? null,
                         'total' => $price * $deductQty,
                         'created_at' => now(),
                         'updated_at' => now()
@@ -194,10 +219,12 @@ class SaleController extends Controller
                         'inventory_id' => $negativeInventory->id,
                         'product_id' => $product->id,
                         'quantity' => $remainingQty,
-                        'price' => $item['price'],
-                        'discount_amount' => $item['discount_amount'] ?? 0,
-                        'discount_price' => $item['discount_price'] ?? 0,
+                        'price' => $unitPrice,
+                        'discount_amount' => $discountAmount,
+                        'discount_price' => $discountPrice,
                         'promotion_id' => $item['promotion_id'] ?? null,
+                        'is_foc' => $isFoc,
+                        'reward_id' => $item['reward_id'] ?? null,
                         'total' => $price * $remainingQty,
                         'created_at' => now(),
                         'updated_at' => now()
@@ -272,11 +299,259 @@ class SaleController extends Controller
         return new SaleResource($sale);
     }
 
+    // public function update(Request $request, string $id)
+    // {
+    //     $request->validate([
+    //         'payment_id'  => 'sometimes|required|exists:payment_methods,id',
+    //         'paid_amount' => 'sometimes|required|numeric|min:0',
+    //         'status_id'   => 'sometimes|required|exists:statuses,id',
+    //         'remark'      => 'nullable|string|max:1000',
+    //         'sale_date'   => 'sometimes|date',
+    //         'updated_by'  => 'required|exists:users,id',
+    //         'products'    => 'sometimes|array|min:1',
+    //         'products.*.product_id' => 'required|exists:products,id',
+    //         'products.*.quantity'   => 'required|integer|min:1'
+    //     ]);
+
+    //     DB::beginTransaction();
+
+    //     try {
+
+    //         $sale = Sale::with(['details', 'customer'])
+    //             ->lockForUpdate()
+    //             ->findOrFail($id);
+
+    //         $updatedBy = $request->updated_by;
+    //         $saleDate  = $request->sale_date ?? $sale->sale_date;
+    //         $oldTotal  = $sale->total_amount;
+    //         $oldPayment= $sale->payment_id;
+
+    //         /* Recalculate New Total */
+
+    //         $totalAmount = 0;
+
+    //         if ($request->products) {
+
+    //             /* RESTORE OLD STOCK (Rollback Previous Deduction) */
+    //             foreach ($sale->details as $detail) {
+
+    //                 Inventory::where('id', $detail->inventory_id)
+    //                     ->lockForUpdate()
+    //                     ->increment('qty', $detail->quantity);
+
+    //                 StockTransaction::where('reference_id', $sale->id)
+    //                 ->delete();
+
+    //                 // StockTransaction::create([
+    //                 //     'inventory_id' => $detail->inventory_id,
+    //                 //     'reference_id' => $sale->id,
+    //                 //     'reference_type' => 'sale_update',
+    //                 //     'reference_date' => $saleDate,
+    //                 //     'quantity_change' => $detail->quantity,
+    //                 //     'type' => 'in',
+    //                 //     'created_by' => $updatedBy,
+    //                 // ]);
+    //             }
+
+    //             // Delete old sale details
+    //             SaleDetail::where('sale_id', $sale->id)->delete();
+
+    //             foreach ($request->products as $item) {
+
+    //                 $price = !empty($item['promotion_id'])
+    //                     ? ($item['discount_price'] ?? ($item['price'] - ($item['discount_amount'] ?? 0)))
+    //                     : $item['price'];
+
+    //                 $totalAmount += $price * $item['quantity'];
+    //             }
+    //         } else {
+    //             $totalAmount = $sale->total_amount;
+    //         }
+
+    //         $paidAmount = $request->paid_amount ?? $sale->paid_amount;
+    //         $dueAmount  = max($paidAmount - $totalAmount, 0);
+
+    //         /* Deduct Stock Again (FIFO) */
+
+    //         $saleDetails       = [];
+    //         $stockTransactions = [];
+
+    //         if ($request->products) {
+
+    //             foreach ($request->products as $item) {
+
+    //                 $remainingQty = $item['quantity'];
+
+    //                 $price = !empty($item['promotion_id'])
+    //                     ? ($item['discount_price'] ?? ($item['price'] - ($item['discount_amount'] ?? 0)))
+    //                     : $item['price'];
+
+    //                 $inventories = Inventory::where('product_id', $item['product_id'])
+    //                     ->where('warehouse_id', $sale->warehouse_id)
+    //                     ->where('qty', '>', 0)
+    //                     ->orderByRaw('expired_date IS NULL')
+    //                     ->orderBy('expired_date')
+    //                     ->orderBy('created_at')
+    //                     ->lockForUpdate()
+    //                     ->get();
+
+    //                 foreach ($inventories as $inventory) {
+
+    //                     if ($remainingQty <= 0) break;
+
+    //                     $deductQty = min($remainingQty, $inventory->qty);
+
+    //                     $inventory->decrement('qty', $deductQty);
+
+    //                     $saleDetails[] = [
+    //                         'sale_id' => $sale->id,
+    //                         'inventory_id' => $inventory->id,
+    //                         'product_id' => $item['product_id'],
+    //                         'quantity' => $deductQty,
+    //                         'price' => $item['price'],
+    //                         'discount_amount' => $item['discount_amount'] ?? 0,
+    //                         'discount_price' => $item['discount_price'] ?? 0,
+    //                         'promotion_id' => $item['promotion_id'] ?? null,
+    //                         'total' => $price * $deductQty,
+    //                         'created_at' => now(),
+    //                         'updated_at' => now()
+    //                     ];
+
+    //                     $stockTransactions[] = [
+    //                         'inventory_id' => $inventory->id,
+    //                         'reference_id' => $sale->id,
+    //                         'reference_type' => 'sale',
+    //                         'reference_date' => $saleDate,
+    //                         'quantity_change' => $deductQty,
+    //                         'type' => 'out',
+    //                         'created_by' => $updatedBy,
+    //                         'created_at' => now(),
+    //                         'updated_at' => now()
+    //                     ];
+
+    //                     $remainingQty -= $deductQty;
+    //                 }
+
+    //                 // Negative stock
+    //                 if ($remainingQty > 0) {
+
+    //                     $negativeInventory = Inventory::firstOrCreate(
+    //                         [
+    //                             'product_id' => $item['product_id'],
+    //                             'warehouse_id' => $sale->warehouse_id,
+    //                             'expired_date' => null
+    //                         ],
+    //                         [
+    //                             'qty' => 0,
+    //                             'created_by' => $updatedBy,
+    //                             'updated_by' => $updatedBy
+    //                         ]
+    //                     );
+
+    //                     $negativeInventory->decrement('qty', $remainingQty);
+
+    //                     $saleDetails[] = [
+    //                         'sale_id' => $sale->id,
+    //                         'inventory_id' => $negativeInventory->id,
+    //                         'product_id' => $item['product_id'],
+    //                         'quantity' => $remainingQty,
+    //                         'price' => $item['price'],
+    //                         'discount_amount' => $item['discount_amount'] ?? 0,
+    //                         'discount_price' => $item['discount_price'] ?? 0,
+    //                         'promotion_id' => $item['promotion_id'] ?? null,
+    //                         'total' => $price * $remainingQty,
+    //                         'created_at' => now(),
+    //                         'updated_at' => now()
+    //                     ];
+
+    //                     $stockTransactions[] = [
+    //                         'inventory_id' => $negativeInventory->id,
+    //                         'reference_id' => $sale->id,
+    //                         'reference_type' => 'sale',
+    //                         'reference_date' => $saleDate,
+    //                         'quantity_change' => $remainingQty,
+    //                         'type' => 'out',
+    //                         'created_by' => $updatedBy,
+    //                         'created_at' => now(),
+    //                         'updated_at' => now()
+    //                     ];
+    //                 }
+    //             }
+
+    //             SaleDetail::insert($saleDetails);
+    //             StockTransaction::insert($stockTransactions);
+    //         }
+
+    //         /* Update Sale */
+
+    //         $sale->update([
+    //             'payment_id' => $request->payment_id ?? $sale->payment_id,
+    //             'paid_amount' => $paidAmount,
+    //             'total_amount' => $totalAmount,
+    //             'due_amount' => $dueAmount,
+    //             'status_id' => $request->status_id ?? $sale->status_id,
+    //             'remark' => $request->remark,
+    //             'sale_date' => $saleDate,
+    //             'updated_by' => $updatedBy
+    //         ]);
+
+    //         /* Customer Ledger Adjustment (Accurate Reversal) */
+
+    //         $customer = $sale->customer()->lockForUpdate()->first();
+
+    //         if (in_array($oldPayment, [2,3])) {
+    //             $customer->increment('balance', $oldTotal);
+    //         }
+
+    //         if (in_array($sale->payment_id, [2,3])) {
+    //             $customer->decrement('balance', $sale->total_amount);
+    //         }
+
+    //         CustomerTransaction::updateOrCreate(
+    //             ['reference_id' => $sale->id],
+    //             [
+    //                 'customer_id' => $sale->customer_id,
+    //                 'type' => 'sale',
+    //                 'amount' => -$sale->total_amount,
+    //                 'payment_id' => $sale->payment_id,
+    //                 'status_id' => 7,
+    //                 'pay_date' => $sale->sale_date,
+    //                 'updated_by' => $updatedBy,
+    //                 'created_by'  => $updatedBy
+    //             ]
+    //         );
+
+    //         DB::commit();
+
+    //         return new SaleResource(
+    //             $sale->fresh([
+    //                 'customer',
+    //                 'status',
+    //                 'paymentMethod',
+    //                 'details.product',
+    //                 'createdBy',
+    //                 'updatedBy'
+    //             ])
+    //         );
+
+    //     } catch (\Throwable $e) {
+
+    //         DB::rollBack();
+
+    //         return response()->json([
+    //             'error'   => 'Failed to update sale',
+    //             'details' => $e->getMessage()
+    //         ], 500);
+    //     }
+    // }
+
     public function update(Request $request, string $id)
     {
         $request->validate([
             'payment_id'  => 'sometimes|required|exists:payment_methods,id',
             'paid_amount' => 'sometimes|required|numeric|min:0',
+            'order_discount_amount' => 'nullable|numeric|min:0',
+            'applied_promotions' => 'nullable|array',
             'status_id'   => 'sometimes|required|exists:statuses,id',
             'remark'      => 'nullable|string|max:1000',
             'sale_date'   => 'sometimes|date',
@@ -305,15 +580,14 @@ class SaleController extends Controller
 
             if ($request->products) {
 
+                StockTransaction::where('reference_id', $sale->id)->delete();
+
                 /* RESTORE OLD STOCK (Rollback Previous Deduction) */
                 foreach ($sale->details as $detail) {
 
                     Inventory::where('id', $detail->inventory_id)
                         ->lockForUpdate()
                         ->increment('qty', $detail->quantity);
-
-                    StockTransaction::where('reference_id', $sale->id)
-                    ->delete();
 
                     // StockTransaction::create([
                     //     'inventory_id' => $detail->inventory_id,
@@ -343,6 +617,8 @@ class SaleController extends Controller
 
             $paidAmount = $request->paid_amount ?? $sale->paid_amount;
             $dueAmount  = max($paidAmount - $totalAmount, 0);
+            $orderDiscount = $request->order_discount_amount ?? $sale->order_discount_amount ?? 0;
+            $totalAmount = max($totalAmount - $orderDiscount, 0);
 
             /* Deduct Stock Again (FIFO) */
 
@@ -355,8 +631,14 @@ class SaleController extends Controller
 
                     $remainingQty = $item['quantity'];
 
+                    $isFoc = !empty($item['is_foc']);
+
+                    $unitPrice = $isFoc ? 0 : $item['price'];
+                    $discountPrice = $isFoc ? 0 : ($item['discount_price'] ?? $item['price']);
+                    $discountAmount = $isFoc ? 0 : ($item['discount_amount'] ?? 0);
+
                     $price = !empty($item['promotion_id'])
-                        ? ($item['discount_price'] ?? ($item['price'] - ($item['discount_amount'] ?? 0)))
+                        ? ($discountPrice ?? ($item['price'] - ($discountAmount ?? 0)))
                         : $item['price'];
 
                     $inventories = Inventory::where('product_id', $item['product_id'])
@@ -381,10 +663,11 @@ class SaleController extends Controller
                             'inventory_id' => $inventory->id,
                             'product_id' => $item['product_id'],
                             'quantity' => $deductQty,
-                            'price' => $item['price'],
-                            'discount_amount' => $item['discount_amount'] ?? 0,
-                            'discount_price' => $item['discount_price'] ?? 0,
+                            'price' => $unitPrice,
+                            'discount_amount' => $discountAmount,
+                            'discount_price' => $discountPrice,
                             'promotion_id' => $item['promotion_id'] ?? null,
+                            'is_foc' => $isFoc,
                             'total' => $price * $deductQty,
                             'created_at' => now(),
                             'updated_at' => now()
@@ -428,10 +711,11 @@ class SaleController extends Controller
                             'inventory_id' => $negativeInventory->id,
                             'product_id' => $item['product_id'],
                             'quantity' => $remainingQty,
-                            'price' => $item['price'],
-                            'discount_amount' => $item['discount_amount'] ?? 0,
-                            'discount_price' => $item['discount_price'] ?? 0,
+                            'price' => $unitPrice,
+                            'discount_amount' => $discountAmount,
+                            'discount_price' => $discountPrice,
                             'promotion_id' => $item['promotion_id'] ?? null,
+                            'is_foc' => $isFoc,
                             'total' => $price * $remainingQty,
                             'created_at' => now(),
                             'updated_at' => now()
@@ -462,6 +746,8 @@ class SaleController extends Controller
                 'paid_amount' => $paidAmount,
                 'total_amount' => $totalAmount,
                 'due_amount' => $dueAmount,
+                'order_discount_amount' => $orderDiscount,
+                'applied_promotions' => $request->applied_promotions ?? $sale->applied_promotions,
                 'status_id' => $request->status_id ?? $sale->status_id,
                 'remark' => $request->remark,
                 'sale_date' => $saleDate,

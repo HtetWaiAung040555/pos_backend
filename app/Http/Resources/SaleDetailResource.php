@@ -27,6 +27,8 @@ class SaleDetailResource extends JsonResource
             'discount_price' => $this->discount_price,
             'discount_amount' => $this->discount_amount,
             'total' => $this->total,
+            'is_foc' => $this->is_foc,
+            'reward_id' => $this->reward_id,
             'promotion' => [
                 'id' => $this->promotion->id ?? null,
                 'name' => $this->promotion->name ?? null,

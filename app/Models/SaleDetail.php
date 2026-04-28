@@ -21,6 +21,8 @@ class SaleDetail extends Model
         'discount_price',
         'total',
         'promotion_id',
+        'is_foc',
+        'reward_id',
     ];
 
     public function sale()

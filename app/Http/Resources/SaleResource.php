@@ -34,6 +34,8 @@ class SaleResource extends JsonResource
             'total_amount' => $this->total_amount,
             'paid_amount' => $this->paid_amount,
             'due_amount' => $this->due_amount,
+            'order_discount_amount' => $this->order_discount_amount,
+            'applied_promotions' => $this->applied_promotions,
             'remark' => $this->remark,
             'sale_date' => $this->toLocalDateTime($this->sale_date),
             'created_by' => $this->createdBy->name ?? null,
