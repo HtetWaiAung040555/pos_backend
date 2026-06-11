@@ -16,6 +16,7 @@ class InventoryResource extends JsonResource
             'id'         => $this->id,
             'name'       => $this->name,
             'qty'        => $this->qty,
+            'foc_qty'    => $this->foc_qty,
             'expired_date' => $this->expired_date ? $this->toLocalDateTime($this->expired_date) : null,
             
             'product'    => $this->product ? [

@@ -12,10 +12,15 @@ return new class extends Migration
             $table->id();
             $table->foreignId('promotion_id')->constrained('promotions')->cascadeOnDelete();
             $table->foreignId('product_id')->nullable()->constrained('products')->nullOnDelete();
+            $table->integer('group_no')->default(1);
             $table->integer('tier')->default(1);
             $table->enum('condition_type', ['ITEM_QTY', 'ITEM_AMOUNT', 'ORDER_QTY', 'ORDER_AMOUNT']);
-            $table->decimal('target_value', 12, 2);
+            $table->string('operator')->default('>=');
+            $table->decimal('target_value', 12, 2)->nullable();
+            $table->decimal('target_value_to', 10, 2)->nullable();
             $table->timestamps();
+            $table->index('group_no');
+            $table->index('tier');
         });
     }
 

@@ -17,6 +17,8 @@ return new class extends Migration
             $table->decimal('reward_value', 12, 2)->nullable();
             $table->integer('reward_qty')->nullable();
             $table->timestamps();
+            $table->index('tier');
+            $table->index('reward_type');
         });
     }
 

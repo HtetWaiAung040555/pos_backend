@@ -36,6 +36,10 @@ class SaleResource extends JsonResource
             'due_amount' => $this->due_amount,
             'order_discount_amount' => $this->order_discount_amount,
             'applied_promotions' => $this->applied_promotions,
+            'promotion_snapshots' => $this->when(
+                !is_null($this->getAttribute('promotion_snapshots')),
+                $this->getAttribute('promotion_snapshots')
+            ),
             'remark' => $this->remark,
             'sale_date' => $this->toLocalDateTime($this->sale_date),
             'created_by' => $this->createdBy->name ?? null,

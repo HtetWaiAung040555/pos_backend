@@ -19,6 +19,9 @@ class PromotionRewardResource extends JsonResource
             'reward_type' => $this->reward_type,
             'reward_value' => $this->reward_value,
             'reward_qty' => $this->reward_qty,
+            'allocated_qty' => $this->allocated_qty,
+            'used_qty' => $this->used_qty,
+            'allocated_warehouse_id' => $this->allocated_warehouse_id,
             'product' => $this->product ? [
                 'id' => $this->product->id,
                 'name' => $this->product->name,

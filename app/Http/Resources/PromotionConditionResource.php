@@ -15,9 +15,12 @@ class PromotionConditionResource extends JsonResource
         return [
             'id' => $this->id,
             'promotion_id' => $this->promotion_id,
+            'group_no' => $this->group_no,
             'tier' => $this->tier,
             'condition_type' => $this->condition_type,
+            'operator' => $this->operator,
             'target_value' => $this->target_value,
+            'target_value_to' => $this->target_value_to,
             'product' => $this->product ? [
                 'id' => $this->product->id,
                 'name' => $this->product->name,

@@ -19,6 +19,9 @@ class Promotion extends Model
         'condition_type',
         'promo_mode',
         'max_reward_value',
+        'override_price',
+        'branch_scope_type',
+        'warehouse_scope_type',
         'discount_type',
         'discount_value',
         'start_at',
@@ -60,5 +63,20 @@ class Promotion extends Model
     public function rewards()
     {
         return $this->hasMany(PromotionReward::class);
+    }
+
+    public function focAllocations()
+    {
+        return $this->hasMany(PromotionFocAllocation::class);
+    }
+
+    public function branches()
+    {
+        return $this->belongsToMany(Branch::class, 'promotion_branches', 'promotion_id', 'branch_id');
+    }
+
+    public function warehouses()
+    {
+        return $this->belongsToMany(Warehouse::class, 'promotion_warehouses', 'promotion_id', 'warehouse_id');
     }
 }

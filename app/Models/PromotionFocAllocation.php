@@ -5,20 +5,17 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
-class PromotionCondition extends Model
+class PromotionFocAllocation extends Model
 {
     use HasFactory;
 
     protected $fillable = [
         'id',
         'promotion_id',
-        'group_no',
-        'tier',
         'product_id',
-        'condition_type',
-        'operator',
-        'target_value',
-        'target_value_to',
+        'allocated_qty',
+        'used_qty',
+        'allocated_warehouse_id',
     ];
 
     public function promotion()
@@ -29,5 +26,10 @@ class PromotionCondition extends Model
     public function product()
     {
         return $this->belongsTo(Product::class);
+    }
+
+    public function remainingQty()
+    {
+        return max(0, $this->allocated_qty - $this->used_qty);
     }
 }

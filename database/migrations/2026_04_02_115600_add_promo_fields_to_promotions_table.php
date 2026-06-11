@@ -35,7 +35,7 @@ return new class extends Migration
     public function down(): void
     {
         Schema::table('promotions', function (Blueprint $table) {
-            $table->dropColumn(['promo  _type', 'condition_type', 'promo_mode']);
+            $table->dropColumn(['promo_type', 'condition_type', 'promo_mode']);
         });
     }
 };

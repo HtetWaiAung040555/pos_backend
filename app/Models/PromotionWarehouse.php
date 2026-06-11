@@ -5,27 +5,24 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
-class PromotionReward extends Model
+class PromotionWarehouse extends Model
 {
     use HasFactory;
 
+    protected $table = 'promotion_warehouses';
+    protected $primaryKey = 'id';
     protected $fillable = [
         'id',
         'promotion_id',
-        'tier',
-        'reward_type',
-        'product_id',
-        'reward_value',
-        'reward_qty',
+        'warehouse_id',
     ];
 
-    public function promotion()
-    {
+    public function promotion() {
         return $this->belongsTo(Promotion::class);
     }
 
-    public function product()
-    {
-        return $this->belongsTo(Product::class);
+    public function warehouse() {
+        return $this->belongsTo(Warehouse::class);
     }
+    
 }

@@ -14,6 +14,7 @@ class Inventory extends Model
     protected $fillable = [
         'name',
         'qty',
+        'foc_qty',
         'expired_date',
         'product_id',
         'warehouse_id',
@@ -39,9 +40,9 @@ class Inventory extends Model
         return $this->belongsTo(User::class, 'updated_by'); 
     }
 
-    public function voidBy()
-    {
-        return $this->belongsTo(User::class, 'void_by');
-    }
+    // public function voidBy()
+    // {
+    //     return $this->belongsTo(User::class, 'void_by');
+    // }
     
 }

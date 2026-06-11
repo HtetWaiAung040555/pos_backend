@@ -26,6 +26,7 @@ class InventoriesController extends Controller
         $request->validate([
             'name'       => 'nullable|string|max:255',
             'qty'        => 'required|integer|min:0',
+            'foc_qty'    => 'nullable|integer|min:0',
             'expired_date' => 'nullable|date',
             'product_id' => 'required|exists:products,id',
             'warehouse_id'  => 'nullable|exists:warehouses,id',
@@ -74,6 +75,7 @@ class InventoriesController extends Controller
                     'warehouse_id' => $request->warehouse_id,
                     'expired_date'  => $request->expired_date,
                     'qty'          => $remainingQty,
+                    'foc_qty'      => $request->foc_qty ?? 0,
                     'created_by'   => $request->created_by,
                     'updated_by' => $request->updated_by ?? $request->created_by
                 ]);
@@ -112,15 +114,16 @@ class InventoriesController extends Controller
 
             $request->validate([
                 'qty'           => 'sometimes|required|integer',
+                'foc_qty'       => 'sometimes|required|integer|min:0',
                 'expired_date'  => 'sometimes|nullable|date',
                 'updated_by'    => 'required|exists:users,id'
             ]);
 
             $hasOutTransaction = StockTransaction::where('inventory_id', $inventory->id)->where('reference_type', 'sale')->exists();
 
-            if ($hasOutTransaction && $request->has('qty')) {
+            if ($hasOutTransaction && ($request->has('qty') || $request->has('foc_qty'))) {
                 return response()->json([
-                    'error' => 'This inventory batch was already used. Quantity cannot be directly updated. Please use stock adjustment.'
+                    'error' => 'This inventory batch was already used. Quantities cannot be directly updated. Please use stock adjustment.'
                 ], 422);
             }
 
@@ -146,6 +149,27 @@ class InventoriesController extends Controller
                         'reference_id'    => $inventory->id,
                         'quantity_change' => abs($diff),
                         'type'            => $diff > 0 ? 'in' : 'out',
+                        'created_by'      => $request->updated_by
+                    ]);
+                }
+            }
+
+            if ($request->has('foc_qty')) {
+                $oldFocQty = (int) $inventory->foc_qty;
+                $newFocQty = (int) $request->foc_qty;
+                $focDiff = $newFocQty - $oldFocQty;
+
+                if ($focDiff !== 0) {
+                    $inventory->foc_qty = $newFocQty;
+                    $inventory->save();
+
+                    StockTransaction::create([
+                        'inventory_id'    => $inventory->id,
+                        'reference_type'  => 'foc_opening_adjustment',
+                        'reference_date' => now(),
+                        'reference_id'    => $inventory->id,
+                        'quantity_change' => abs($focDiff),
+                        'type'            => $focDiff > 0 ? 'in' : 'out',
                         'created_by'      => $request->updated_by
                     ]);
                 }
@@ -241,6 +265,7 @@ class InventoriesController extends Controller
             'reason'       => 'nullable|string|max:255',
             'adjust_date' => 'nullable|date',
             'type' => 'nullable|in:in,out',
+            'stock_type' => 'nullable|in:regular,foc',
             'created_by'   => 'required|exists:users,id'
         ]);
 
@@ -248,12 +273,21 @@ class InventoriesController extends Controller
 
         try {
             $inventory = Inventory::lockForUpdate()->findOrFail($request->inventory_id);
+            $stockType = $request->stock_type ?? 'regular';
 
             // Adjust qty (can go negative)
             if ($request->type === 'in') {
-                $inventory->qty += abs($request->qty);
+                if ($stockType === 'foc') {
+                    $inventory->foc_qty += abs($request->qty);
+                } else {
+                    $inventory->qty += abs($request->qty);
+                }
             } else {
-                $inventory->qty -= abs($request->qty);
+                if ($stockType === 'foc') {
+                    $inventory->foc_qty -= abs($request->qty);
+                } else {
+                    $inventory->qty -= abs($request->qty);
+                }
             }
             $inventory->updated_by = $request->created_by;
             $inventory->save();
@@ -261,7 +295,7 @@ class InventoriesController extends Controller
             StockTransaction::create([
                 'inventory_id'    => $inventory->id,
                 'reference_id'    => null,
-                'reference_type'  => 'adjustment',
+                'reference_type'  => $stockType === 'foc' ? 'foc_adjustment' : 'adjustment',
                 'reference_date' => $request->adjust_date ?? now(),
                 'quantity_change' => $request->qty,
                 'reason'          => $request->reason,
@@ -292,9 +326,13 @@ class InventoriesController extends Controller
         $query = Inventory::query()
             ->select(
                 'product_id',
-                DB::raw('SUM(qty) as total_qty')
+                DB::raw('SUM(qty) as total_qty'),
+                DB::raw('SUM(foc_qty) as total_foc_qty')
             )
-            ->where('qty', '>', 0)
+            ->where(function ($q) {
+                $q->where('qty', '>', 0)
+                    ->orWhere('foc_qty', '>', 0);
+            })
             ->with('product')
             ->groupBy('product_id');
 
@@ -310,6 +348,7 @@ class InventoriesController extends Controller
                     'product_id' => $row->product_id,
                     'product'    => $row->product,
                     'qty'        => (int) $row->total_qty,
+                    'foc_qty'    => (int) $row->total_foc_qty,
                     'price'      => $row->product->price,
                 ];
             })
