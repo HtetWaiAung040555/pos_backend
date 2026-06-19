@@ -22,13 +22,29 @@ class Product extends Model
         'old_price',
         'image',
         'barcode',
+        'default_product_unit_id',
+        'uom_enabled',
         'status_id',
         'created_by',
         'updated_by'
     ];
 
+    protected $casts = [
+        'uom_enabled' => 'boolean',
+    ];
+
     public function unit(){
         return $this->belongsTo(Unit::class);
+    }
+
+    public function productUnits()
+    {
+        return $this->hasMany(ProductUnit::class);
+    }
+
+    public function defaultProductUnit()
+    {
+        return $this->belongsTo(ProductUnit::class, 'default_product_unit_id');
     }
 
     public function category() {
@@ -48,7 +64,9 @@ class Product extends Model
     }
 
     public function promotions() {
-        return $this->belongsToMany(Promotion::class, 'promotions_products', 'product_id', 'promotion_id');
+        return $this->belongsToMany(Promotion::class, 'promotions_products', 'product_id', 'promotion_id')
+            ->withPivot('product_unit_id', 'unit_id')
+            ->withTimestamps();
     }
 
     public function priceChanges()

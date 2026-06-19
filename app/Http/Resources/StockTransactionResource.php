@@ -43,6 +43,14 @@ class StockTransactionResource extends JsonResource
             "reference_type" => $this->reference_type,
             "reference_date" => $this->reference_date ? $this->toLocalDateTime($this->reference_date) : null,
             "quantity_change" => $this->quantity_change,
+            "uom" => [
+                "product_unit_id" => $this->product_unit_id,
+                "unit_id" => $this->unit_id,
+                "unit_name" => $this->unit?->name,
+                "unit_quantity" => $this->unit_quantity,
+                "base_quantity" => $this->base_quantity,
+                "conversion_to_base" => $this->conversion_to_base,
+            ],
             "type" => $this->type,
             "reason" => $this->reason,
 

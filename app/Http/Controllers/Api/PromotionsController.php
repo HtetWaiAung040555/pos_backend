@@ -12,6 +12,7 @@ use App\Models\PromotionCondition;
 use App\Models\PromotionFocAllocation;
 use App\Models\PromotionReward;
 use App\Models\PromotionWarehouse;
+use App\Models\ProductUnit;
 use App\Models\Status;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -37,6 +38,12 @@ class PromotionsController extends Controller
             'createdBy',
             'updatedBy',
             'voidBy',
+            'conditions.productUnit.unit',
+            'conditions.unit',
+            'rewards.productUnit.unit',
+            'rewards.unit',
+            'focAllocations.productUnit.unit',
+            'focAllocations.unit',
         ])->latest()->get();
 
         return PromotionResource::collection($promotions);
@@ -45,6 +52,8 @@ class PromotionsController extends Controller
     public function store(Request $request)
     {
         try {
+            $this->normalizePromotionProductsInput($request);
+
             $validated = $request->validate([
                 'name' => 'required|string|max:255',
                 'description' => 'nullable|string',
@@ -63,6 +72,10 @@ class PromotionsController extends Controller
 
                 'products' => 'nullable|array',
                 'products.*' => 'integer|exists:products,id',
+                'promotion_products' => 'nullable|array',
+                'promotion_products.*.product_id' => 'required_with:promotion_products|exists:products,id',
+                'promotion_products.*.product_unit_id' => 'nullable|exists:product_units,id',
+                'promotion_products.*.unit_id' => 'nullable|exists:units,id',
                 'branch_scope_type' => 'nullable|in:ALL,SELECTED',
                 'branch_ids' => 'nullable|array',
                 'branch_ids.*' => 'integer|exists:branches,id',
@@ -78,12 +91,20 @@ class PromotionsController extends Controller
                 'tiers.*.condition.condition_type' => 'required_with:tiers.*.condition|in:ORDER_AMOUNT,ORDER_QTY,ITEM_QTY,ITEM_AMOUNT',
                 'tiers.*.condition.target_value' => 'required_with:tiers.*.condition|numeric|min:0',
                 'tiers.*.condition.product_id' => 'nullable|exists:products,id',
+                'tiers.*.condition.product_unit_id' => 'nullable|exists:product_units,id',
+                'tiers.*.condition.unit_id' => 'nullable|exists:units,id',
+                'tiers.*.condition.unit_name' => 'nullable|string|max:255',
+                'tiers.*.condition.conversion_to_base' => 'nullable|numeric|gt:0',
                 'tiers.*.condition.operator' => 'nullable|string|max:10',
                 'tiers.*.condition.target_value_to' => 'nullable|numeric|min:0',
                 'tiers.*.conditions' => 'nullable|array',
                 'tiers.*.conditions.*.condition_type' => 'required_with:tiers.*.conditions|in:ORDER_AMOUNT,ORDER_QTY,ITEM_QTY,ITEM_AMOUNT',
                 'tiers.*.conditions.*.target_value' => 'required_with:tiers.*.conditions|numeric|min:0',
                 'tiers.*.conditions.*.product_id' => 'nullable|exists:products,id',
+                'tiers.*.conditions.*.product_unit_id' => 'nullable|exists:product_units,id',
+                'tiers.*.conditions.*.unit_id' => 'nullable|exists:units,id',
+                'tiers.*.conditions.*.unit_name' => 'nullable|string|max:255',
+                'tiers.*.conditions.*.conversion_to_base' => 'nullable|numeric|gt:0',
                 'tiers.*.conditions.*.operator' => 'nullable|string|max:10',
                 'tiers.*.conditions.*.target_value_to' => 'nullable|numeric|min:0',
 
@@ -91,15 +112,33 @@ class PromotionsController extends Controller
                 'tiers.*.reward.reward_value' => 'nullable|numeric|min:0',
                 'tiers.*.reward.reward_qty' => 'nullable|integer|min:1',
                 'tiers.*.reward.product_id' => 'nullable|exists:products,id',
+                'tiers.*.reward.product_unit_id' => 'nullable|exists:product_units,id',
+                'tiers.*.reward.unit_id' => 'nullable|exists:units,id',
+                'tiers.*.reward.unit_name' => 'nullable|string|max:255',
+                'tiers.*.reward.conversion_to_base' => 'nullable|numeric|gt:0',
+                'tiers.*.reward.override_price' => 'nullable|numeric|min:0',
                 'tiers.*.rewards' => 'nullable|array',
                 'tiers.*.rewards.*.product_id' => 'nullable|exists:products,id',
+                'tiers.*.rewards.*.product_unit_id' => 'nullable|exists:product_units,id',
+                'tiers.*.rewards.*.unit_id' => 'nullable|exists:units,id',
+                'tiers.*.rewards.*.unit_name' => 'nullable|string|max:255',
+                'tiers.*.rewards.*.conversion_to_base' => 'nullable|numeric|gt:0',
                 'tiers.*.rewards.*.reward_qty' => 'nullable|integer|min:1',
                 'tiers.*.rewards.*.reward_value' => 'nullable|numeric|min:0',
+                'tiers.*.rewards.*.override_price' => 'nullable|numeric|min:0',
 
                 'foc_allocations' => 'nullable|array',
                 'foc_allocations.*.product_id' => 'required_with:foc_allocations|exists:products,id',
+                'foc_allocations.*.product_unit_id' => 'nullable|exists:product_units,id',
+                'foc_allocations.*.unit_id' => 'nullable|exists:units,id',
+                'foc_allocations.*.unit_name' => 'nullable|string|max:255',
+                'foc_allocations.*.unit_quantity' => 'nullable|numeric|min:0',
+                'foc_allocations.*.base_quantity' => 'nullable|numeric|min:0',
+                'foc_allocations.*.conversion_to_base' => 'nullable|numeric|gt:0',
                 'foc_allocations.*.allocated_qty' => 'required_with:foc_allocations|integer|min:0',
             ]);
+
+            $this->validatePromotionProductUnits($validated);
 
             $branchIds = collect($validated['branch_ids'] ?? [])->unique()->values()->all();
             $warehouseIds = collect($validated['warehouse_ids'] ?? [])->unique()->values()->all();
@@ -126,9 +165,13 @@ class PromotionsController extends Controller
                 ]);
             }
 
-            if ($validated['promo_type'] === 'PRICE_OVERRIDE' && !isset($validated['override_price'])) {
+            if (
+                $validated['promo_type'] === 'PRICE_OVERRIDE'
+                && !isset($validated['override_price'])
+                && !$this->hasTierOverridePrice($validated)
+            ) {
                 throw ValidationException::withMessages([
-                    'override_price' => 'override_price is required for price override promotions.',
+                    'override_price' => 'override_price or tier reward override_price is required for price override promotions.',
                 ]);
             }
 
@@ -169,8 +212,8 @@ class PromotionsController extends Controller
 
                 Log::info("Promotion created with ID {$promotion->id}");
 
-                if (array_key_exists('products', $validated)) {
-                    $promotion->products()->sync($validated['products'] ?? []);
+                if (array_key_exists('products', $validated) || array_key_exists('promotion_products', $validated)) {
+                    $this->syncPromotionProducts($promotion, $validated);
                 }
 
                 $targetBranchIds = $this->syncPromotionBranches($promotion, $branchScopeType, $branchIds);
@@ -185,10 +228,13 @@ class PromotionsController extends Controller
                     $allocationWarehouseIds = $targetWarehouseIds;
 
                     foreach ($validated['foc_allocations'] ?? [] as $allocation) {
-                        $productId = (int) $allocation['product_id'];
-                        $qty = (int) $allocation['allocated_qty'];
+                        $allocationPayload = $this->promotionFocAllocationPayload($allocation);
+                        $productId = (int) $allocationPayload['product_id'];
+                        $productUnitId = $allocationPayload['product_unit_id'] ?? null;
+                        $qty = (int) $allocationPayload['allocated_qty'];
 
                         $exists = PromotionFocAllocation::where('product_id', $productId)
+                            ->where(fn ($query) => $this->applyFocAllocationConflictScope($query, $productUnitId))
                             ->where('promotion_id', '!=', $promotion->id)
                             ->whereHas('promotion', fn($q) => $q
                                 ->whereNull('void_at')
@@ -208,8 +254,7 @@ class PromotionsController extends Controller
 
                             PromotionFocAllocation::create([
                                 'promotion_id' => $promotion->id,
-                                'product_id' => $productId,
-                                'allocated_qty' => $qty,
+                                ...$allocationPayload,
                                 'used_qty' => 0,
                                 'allocated_warehouse_id' => $warehouseId,
                             ]);
@@ -226,6 +271,7 @@ class PromotionsController extends Controller
                     foreach ($conditions as $conditionIndex => $condition) {
                         $promotion->conditions()->create([
                             'product_id' => $condition['product_id'] ?? null,
+                            ...$this->promotionUomPayload($condition),
                             'group_no' => $condition['group_no'] ?? ($conditionIndex + 1),
                             'condition_type' => $condition['condition_type'],
                             'operator' => $condition['operator'] ?? '>=',
@@ -239,8 +285,10 @@ class PromotionsController extends Controller
                         $promotion->rewards()->create([
                             'reward_type' => $promotion->promo_type === 'FOC' ? 'FREE_PRODUCT' : 'DISCOUNT',
                             'product_id' => $reward['product_id'] ?? null,
+                            ...$this->promotionUomPayload($reward),
                             'reward_qty' => $reward['reward_qty'] ?? null,
                             'reward_value' => $reward['reward_value'] ?? null,
+                            'override_price' => $reward['override_price'] ?? null,
                             'tier' => $tier
                         ]);
                     }
@@ -253,8 +301,14 @@ class PromotionsController extends Controller
                 $promotion->load([
                     'products',
                     'conditions.product',
+                    'conditions.productUnit.unit',
+                    'conditions.unit',
                     'rewards.product',
+                    'rewards.productUnit.unit',
+                    'rewards.unit',
                     'focAllocations.product',
+                    'focAllocations.productUnit.unit',
+                    'focAllocations.unit',
                     'branches',
                     'warehouses',
                 ])
@@ -275,8 +329,14 @@ class PromotionsController extends Controller
         $promotion = Promotion::with([
             'products',
             'conditions.product',
+            'conditions.productUnit.unit',
+            'conditions.unit',
             'rewards.product',
+            'rewards.productUnit.unit',
+            'rewards.unit',
             'focAllocations.product',
+            'focAllocations.productUnit.unit',
+            'focAllocations.unit',
             'branches',
             'warehouses',
         ])->findOrFail($id);
@@ -287,6 +347,7 @@ class PromotionsController extends Controller
     public function update(Request $request, string $id)
     {
         $promotion = Promotion::findOrFail($id);
+        $this->normalizePromotionProductsInput($request);
 
         $validated = $request->validate([
             'name' => 'sometimes|required|string|max:255',
@@ -301,6 +362,10 @@ class PromotionsController extends Controller
             'updated_by' => 'nullable|exists:users,id',
             'products' => 'nullable|array',
             'products.*' => 'integer|exists:products,id',
+            'promotion_products' => 'nullable|array',
+            'promotion_products.*.product_id' => 'required_with:promotion_products|exists:products,id',
+            'promotion_products.*.product_unit_id' => 'nullable|exists:product_units,id',
+            'promotion_products.*.unit_id' => 'nullable|exists:units,id',
             'discount_type' => 'nullable|in:PERCENT,AMOUNT',
             'discount_value' => 'nullable|numeric|min:0',
             'max_reward_value' => 'nullable|numeric|min:0',
@@ -319,6 +384,10 @@ class PromotionsController extends Controller
             'tiers.*.condition.condition_type' => 'required_with:tiers.*.condition|in:ORDER_AMOUNT,ORDER_QTY,ITEM_QTY,ITEM_AMOUNT',
             'tiers.*.condition.target_value' => 'required_with:tiers.*.condition|numeric|min:0',
             'tiers.*.condition.product_id' => 'nullable|exists:products,id',
+            'tiers.*.condition.product_unit_id' => 'nullable|exists:product_units,id',
+            'tiers.*.condition.unit_id' => 'nullable|exists:units,id',
+            'tiers.*.condition.unit_name' => 'nullable|string|max:255',
+            'tiers.*.condition.conversion_to_base' => 'nullable|numeric|gt:0',
             'tiers.*.condition.operator' => 'nullable|string|max:10',
             'tiers.*.condition.target_value_to' => 'nullable|numeric|min:0',
             'tiers.*.conditions' => 'nullable|array',
@@ -326,6 +395,10 @@ class PromotionsController extends Controller
             'tiers.*.conditions.*.condition_type' => 'required_with:tiers.*.conditions|in:ORDER_AMOUNT,ORDER_QTY,ITEM_QTY,ITEM_AMOUNT',
             'tiers.*.conditions.*.target_value' => 'required_with:tiers.*.conditions|numeric|min:0',
             'tiers.*.conditions.*.product_id' => 'nullable|exists:products,id',
+            'tiers.*.conditions.*.product_unit_id' => 'nullable|exists:product_units,id',
+            'tiers.*.conditions.*.unit_id' => 'nullable|exists:units,id',
+            'tiers.*.conditions.*.unit_name' => 'nullable|string|max:255',
+            'tiers.*.conditions.*.conversion_to_base' => 'nullable|numeric|gt:0',
             'tiers.*.conditions.*.operator' => 'nullable|string|max:10',
             'tiers.*.conditions.*.target_value_to' => 'nullable|numeric|min:0',
             'tiers.*.reward' => 'nullable|array',
@@ -333,17 +406,35 @@ class PromotionsController extends Controller
             'tiers.*.reward.reward_value' => 'nullable|numeric|min:0',
             'tiers.*.reward.reward_qty' => 'nullable|integer|min:1',
             'tiers.*.reward.product_id' => 'nullable|exists:products,id',
+            'tiers.*.reward.product_unit_id' => 'nullable|exists:product_units,id',
+            'tiers.*.reward.unit_id' => 'nullable|exists:units,id',
+            'tiers.*.reward.unit_name' => 'nullable|string|max:255',
+            'tiers.*.reward.conversion_to_base' => 'nullable|numeric|gt:0',
+            'tiers.*.reward.override_price' => 'nullable|numeric|min:0',
             'tiers.*.rewards' => 'nullable|array',
             'tiers.*.rewards.*.id' => 'nullable|exists:promotion_rewards,id',
             'tiers.*.rewards.*.product_id' => 'nullable|exists:products,id',
+            'tiers.*.rewards.*.product_unit_id' => 'nullable|exists:product_units,id',
+            'tiers.*.rewards.*.unit_id' => 'nullable|exists:units,id',
+            'tiers.*.rewards.*.unit_name' => 'nullable|string|max:255',
+            'tiers.*.rewards.*.conversion_to_base' => 'nullable|numeric|gt:0',
             'tiers.*.rewards.*.reward_qty' => 'nullable|integer|min:1',
             'tiers.*.rewards.*.reward_value' => 'nullable|numeric|min:0',
+            'tiers.*.rewards.*.override_price' => 'nullable|numeric|min:0',
             'foc_allocations' => 'nullable|array',
             'foc_allocations.*.id' => 'nullable|exists:promotion_foc_allocations,id',
             'foc_allocations.*.product_id' => 'required_with:foc_allocations|exists:products,id',
+            'foc_allocations.*.product_unit_id' => 'nullable|exists:product_units,id',
+            'foc_allocations.*.unit_id' => 'nullable|exists:units,id',
+            'foc_allocations.*.unit_name' => 'nullable|string|max:255',
+            'foc_allocations.*.unit_quantity' => 'nullable|numeric|min:0',
+            'foc_allocations.*.base_quantity' => 'nullable|numeric|min:0',
+            'foc_allocations.*.conversion_to_base' => 'nullable|numeric|gt:0',
             'foc_allocations.*.allocated_warehouse_id' => 'nullable|exists:warehouses,id',
             'foc_allocations.*.allocated_qty' => 'required_with:foc_allocations|integer|min:0',
         ]);
+
+        $this->validatePromotionProductUnits($validated);
 
         Log::info("Updating promotion ID {$id} with data", $validated);
 
@@ -405,9 +496,14 @@ class PromotionsController extends Controller
                 ]);
             }
 
-            if ($targetPromoType === 'PRICE_OVERRIDE' && !isset($validated['override_price']) && is_null($promotion->override_price)) {
+            if (
+                $targetPromoType === 'PRICE_OVERRIDE'
+                && !isset($validated['override_price'])
+                && is_null($promotion->override_price)
+                && !$this->hasTierOverridePrice($validated)
+            ) {
                 throw ValidationException::withMessages([
-                    'override_price' => 'override_price is required for price override promotions.',
+                    'override_price' => 'override_price or tier reward override_price is required for price override promotions.',
                 ]);
             }
 
@@ -471,8 +567,8 @@ class PromotionsController extends Controller
                 'synced_at' => null,
             ]);
 
-            if (array_key_exists('products', $validated)) {
-                $promotion->products()->sync($validated['products'] ?? []);
+            if (array_key_exists('products', $validated) || array_key_exists('promotion_products', $validated)) {
+                $this->syncPromotionProducts($promotion, $validated);
             }
 
             $targetBranchIds = $this->syncPromotionBranches($promotion, $branchScopeType, $branchIds);
@@ -500,6 +596,12 @@ class PromotionsController extends Controller
                         ->get()
                         ->map(fn ($allocation) => [
                             'product_id' => (int) $allocation->product_id,
+                            'product_unit_id' => $allocation->product_unit_id ? (int) $allocation->product_unit_id : null,
+                            'unit_id' => $allocation->unit_id ? (int) $allocation->unit_id : null,
+                            'unit_name' => $allocation->unit_name,
+                            'unit_quantity' => $allocation->unit_quantity,
+                            'base_quantity' => $allocation->base_quantity,
+                            'conversion_to_base' => $allocation->conversion_to_base,
                             'allocated_qty' => (int) $allocation->allocated_qty,
                         ])
                         ->all();
@@ -513,8 +615,14 @@ class PromotionsController extends Controller
                 $promotion->load([
                     'products',
                     'conditions.product',
+                    'conditions.productUnit.unit',
+                    'conditions.unit',
                     'rewards.product',
+                    'rewards.productUnit.unit',
+                    'rewards.unit',
                     'focAllocations.product',
+                    'focAllocations.productUnit.unit',
+                    'focAllocations.unit',
                     'branches',
                     'warehouses',
                 ])
@@ -599,7 +707,18 @@ class PromotionsController extends Controller
             'cart' => 'nullable|array',
         ]);
 
-        $cartItems = collect($request->cart ?? []);
+        $cartItems = collect($request->cart ?? [])
+            ->values()
+            ->map(function ($item, $index) {
+                $item['product_id'] = (int) $item['product_id'];
+                $item['product_unit_id'] = !empty($item['product_unit_id']) ? (int) $item['product_unit_id'] : null;
+                $item['unit_id'] = !empty($item['unit_id']) ? (int) $item['unit_id'] : null;
+                $item['qty'] = (float) ($item['qty'] ?? 0);
+                $item['base_qty'] = (float) ($item['base_qty'] ?? $item['qty']);
+                $item['_promo_line_key'] = $this->cartItemKey($item, $index);
+
+                return $item;
+            });
 
         if ($cartItems->isEmpty()) {
             return response()->json([
@@ -643,7 +762,15 @@ class PromotionsController extends Controller
 
         $this->refreshPromotionLifecycleStatuses();
 
-        $promotions = Promotion::with(['products', 'conditions', 'rewards', 'focAllocations'])
+        $promotions = Promotion::with([
+                'products',
+                'conditions',
+                'conditions.productUnit.unit',
+                'rewards',
+                'rewards.productUnit.unit',
+                'focAllocations',
+                'focAllocations.productUnit.unit',
+            ])
             ->where('status_id', $this->statusIdByName('applied'))
             ->where('start_at', '<=', now())
             ->where('end_at', '>=', now())
@@ -660,28 +787,30 @@ class PromotionsController extends Controller
         $effectiveUnitPrices = [];
 
         foreach ($cartItems as $item) {
-            $effectiveUnitPrices[(int) $item['product_id']] = (float) ($item['original_price'] ?? $item['price']);
+            $effectiveUnitPrices[$item['_promo_line_key']] = (float) ($item['original_price'] ?? $item['price']);
         }
 
         foreach ($promotions->where('promo_type', 'PRODUCT_DISCOUNT') as $promotion) {
             foreach ($cartItems as $item) {
                 $productId = (int) $item['product_id'];
-                $hasProduct = $promotion->products
-                    ->where('id', $productId)
-                    ->isNotEmpty();
+                $hasProduct = $this->promotionAppliesToCartItem($promotion, $item);
 
                 if (!$hasProduct) continue;
 
-                $currentPrice = (float) ($effectiveUnitPrices[$productId] ?? $item['price']);
+                $lineKey = $item['_promo_line_key'];
+                $currentPrice = (float) ($effectiveUnitPrices[$lineKey] ?? $item['price']);
                 $discount = $promotion->discount_type === 'PERCENT'
                     ? ($currentPrice * $promotion->discount_value) / 100
                     : $promotion->discount_value;
                 $discount = min($discount, $currentPrice);
                 $discountedPrice = max(0, $currentPrice - $discount);
-                $effectiveUnitPrices[$productId] = $discountedPrice;
+                $effectiveUnitPrices[$lineKey] = $discountedPrice;
 
                 $productDiscounts[] = [
                     'product_id' => $productId,
+                    'product_unit_id' => $item['product_unit_id'] ?? null,
+                    'unit_id' => $item['unit_id'] ?? null,
+                    'line_key' => $lineKey,
                     'promotion_id' => $promotion->id,
                     'promo_type' => 'PRODUCT_DISCOUNT',
                     'discount_amount' => $discount,
@@ -713,9 +842,9 @@ class PromotionsController extends Controller
                     $overrideQty
                 );
 
-                if (!$isEligible || is_null($promotion->override_price)) continue;
+                $overrideUnitPrice = $this->getPriceOverrideUnitPrice($promotion, $conditions, (int) $tier);
 
-                $overrideUnitPrice = $this->getPriceOverrideUnitPrice($promotion, $conditions);
+                if (!$isEligible || is_null($overrideUnitPrice)) continue;
 
                 Log::info("Evaluating PRICE_OVERRIDE promotion ID {$promotion->id} for tier {$tier}", [
                     'override_unit_price' => $overrideUnitPrice,
@@ -726,24 +855,28 @@ class PromotionsController extends Controller
 
                 foreach ($overrideItems as $item) {
                     $productId = (int) $item['product_id'];
-                    $currentPrice = (float) ($effectiveUnitPrices[$productId] ?? ($item['original_price'] ?? $item['price']));
+                    $lineKey = $item['_promo_line_key'];
+                    $currentPrice = (float) ($effectiveUnitPrices[$lineKey] ?? ($item['original_price'] ?? $item['price']));
                     $discountedPrice = min($currentPrice, $overrideUnitPrice);
                     $discount = max(0, $currentPrice - $discountedPrice);
                     $isAlreadyOverridePrice = abs($currentPrice - $overrideUnitPrice) < 0.01;
 
                     if ($discount <= 0 && !$isAlreadyOverridePrice) continue;
 
-                    $effectiveUnitPrices[$productId] = $discountedPrice;
+                    $effectiveUnitPrices[$lineKey] = $discountedPrice;
 
                     $productDiscounts[] = [
                         'product_id' => $productId,
+                        'product_unit_id' => $item['product_unit_id'] ?? null,
+                        'unit_id' => $item['unit_id'] ?? null,
+                        'line_key' => $lineKey,
                         'promotion_id' => $promotion->id,
                         'promo_type' => 'PRICE_OVERRIDE',
                         'tier' => (int) $tier,
                         'discount_amount' => $discount,
                         'discount_type' => 'AMOUNT',
                         'discount_value' => $discount,
-                        'override_price' => (float) $promotion->override_price,
+                        'override_price' => (float) $overrideUnitPrice,
                         'discount_price' => $discountedPrice,
                     ];
                 }
@@ -753,9 +886,9 @@ class PromotionsController extends Controller
         }
 
         $discountedCartItems = $cartItems->map(function ($item) use ($effectiveUnitPrices) {
-            $productId = (int) $item['product_id'];
+            $lineKey = $item['_promo_line_key'];
             $item['original_price'] = $item['price'];
-            $item['price'] = (float) ($effectiveUnitPrices[$productId] ?? $item['price']);
+            $item['price'] = (float) ($effectiveUnitPrices[$lineKey] ?? $item['price']);
 
             return $item;
         });
@@ -846,26 +979,33 @@ class PromotionsController extends Controller
                 $tierRewards = $promotion->rewards->where('tier', $tier);
                 $totalFreeQtyForPromo = collect($freeItems)
                     ->where('promotion_id', $promotion->id)
-                    ->sum('qty');
+                    ->sum('base_qty');
 
                 foreach ($tierRewards as $reward) {
                     $productId = (int) $reward->product_id;
-                    $qty = $reward->reward_qty;
+                    $unitQty = (float) $reward->reward_qty;
 
                     if ($promotion->promo_mode === 'MULTIPLIER') {
-                        $qty *= $multiplier;
+                        $unitQty *= $multiplier;
                     }
+
+                    $baseQty = $this->rewardBaseQuantity($reward, $unitQty);
 
                     if (!is_null($promotion->max_reward_value)) {
                         $remainingQty = $promotion->max_reward_value - $totalFreeQtyForPromo;
 
                         if ($remainingQty <= 0) break;
 
-                        $qty = min($qty, $remainingQty);
+                        $baseQty = min($baseQty, $remainingQty);
+                        $unitQty = $this->rewardUnitQuantityFromBase($reward, $baseQty);
                     }
 
                     $matchingPools = $promotion->focAllocations
-                        ->where('product_id', $productId);
+                        ->where('product_id', $productId)
+                        ->filter(fn ($allocation) => $this->focAllocationMatchesRewardUnit(
+                            $allocation->product_unit_id,
+                            $reward->product_unit_id
+                        ));
 
                     if (!empty($warehouseId)) {
                         $matchingPools = $matchingPools
@@ -876,32 +1016,39 @@ class PromotionsController extends Controller
 
                     $allocatedQty = (int) $matchingPools->sum('allocated_qty');
                     $usedQty = (int) $matchingPools->sum('used_qty');
-                    $poolKey = $promotion->id . ':' . $productId . ':' . ((int) ($warehouseId ?? 0));
+                    $poolKey = $promotion->id . ':' . $productId . ':' . ((int) ($reward->product_unit_id ?? 0)) . ':' . ((int) ($warehouseId ?? 0));
                     $reservedPoolQty = (int) ($focReservedByPool[$poolKey] ?? 0);
                     $remainingAllocatableQty = max(0, $allocatedQty - $usedQty - $reservedPoolQty);
 
                     if ($remainingAllocatableQty <= 0) continue;
 
-                    $qty = min($qty, $remainingAllocatableQty);
+                    $baseQty = min($baseQty, $remainingAllocatableQty);
                     $availableQty = ($focAvailability[$productId] ?? 0)
                         - ($focReserved[$productId] ?? 0);
 
                     if ($availableQty <= 0) continue;
 
-                    $qty = min($qty, $availableQty);
+                    $baseQty = min($baseQty, $availableQty);
+                    $unitQty = $this->rewardUnitQuantityFromBase($reward, $baseQty);
 
-                    if ($qty <= 0) continue;
+                    if ($baseQty <= 0) continue;
 
                     $freeItems[] = [
                         'product_id' => $productId,
-                        'qty' => $qty,
+                        'product_unit_id' => $reward->product_unit_id,
+                        'unit_id' => $reward->unit_id,
+                        'unit_name' => $reward->unit_name,
+                        'conversion_to_base' => $reward->conversion_to_base,
+                        'qty' => $unitQty,
+                        'unit_quantity' => $unitQty,
+                        'base_qty' => $baseQty,
                         'reward_id' => (int) $reward->id,
                         'promotion_id' => $promotion->id
                     ];
 
-                    $focReserved[$productId] = ($focReserved[$productId] ?? 0) + $qty;
-                    $focReservedByPool[$poolKey] = ($focReservedByPool[$poolKey] ?? 0) + $qty;
-                    $totalFreeQtyForPromo += $qty;
+                    $focReserved[$productId] = ($focReserved[$productId] ?? 0) + $baseQty;
+                    $focReservedByPool[$poolKey] = ($focReservedByPool[$poolKey] ?? 0) + $baseQty;
+                    $totalFreeQtyForPromo += $baseQty;
                 }
 
                 if ($promotion->promo_mode === 'TIER') break;
@@ -922,19 +1069,19 @@ class PromotionsController extends Controller
 
     private function getConditionCartItems($cartItems, Promotion $promotion, $condition)
     {
+        if (!empty($condition->product_unit_id)) {
+            return $cartItems->filter(fn ($item) =>
+                (int) $item['product_id'] === (int) $condition->product_id
+                && $this->sameNullableId($item['product_unit_id'] ?? null, $condition->product_unit_id)
+            );
+        }
+
         if (!empty($condition->product_id)) {
             return $cartItems->where('product_id', $condition->product_id);
         }
 
-        $promotionProductIds = $promotion->products
-            ->pluck('id')
-            ->map(fn ($productId) => (int) $productId)
-            ->all();
-
-        if (!empty($promotionProductIds)) {
-            return $cartItems->filter(
-                fn ($item) => in_array((int) $item['product_id'], $promotionProductIds, true)
-            );
+        if ($promotion->products->isNotEmpty()) {
+            return $cartItems->filter(fn ($item) => $this->promotionAppliesToCartItem($promotion, $item));
         }
 
         return $cartItems;
@@ -1011,22 +1158,81 @@ class PromotionsController extends Controller
         };
     }
 
+    private function cartItemKey(array $item, int $index): string
+    {
+        return implode(':', [
+            $index,
+            (int) ($item['product_id'] ?? 0),
+            (int) ($item['product_unit_id'] ?? 0),
+        ]);
+    }
+
+    private function promotionAppliesToCartItem(Promotion $promotion, array $item): bool
+    {
+        if ($promotion->products->isEmpty()) {
+            return true;
+        }
+
+        return $promotion->products->contains(function ($product) use ($item) {
+            if ((int) $product->id !== (int) $item['product_id']) {
+                return false;
+            }
+
+            $pivotProductUnitId = $product->pivot->product_unit_id ?? null;
+
+            if (empty($pivotProductUnitId)) {
+                return true;
+            }
+
+            return $this->sameNullableId($item['product_unit_id'] ?? null, $pivotProductUnitId);
+        });
+    }
+
+    private function sameNullableId($left, $right): bool
+    {
+        if (is_null($left) || $left === '') {
+            $left = null;
+        }
+
+        if (is_null($right) || $right === '') {
+            $right = null;
+        }
+
+        return is_null($left) && is_null($right)
+            || (!is_null($left) && !is_null($right) && (int) $left === (int) $right);
+    }
+
+    private function rewardBaseQuantity(PromotionReward $reward, float $unitQty): float
+    {
+        $conversion = $reward->conversion_to_base ? (float) $reward->conversion_to_base : 1;
+
+        return $unitQty * $conversion;
+    }
+
+    private function rewardUnitQuantityFromBase(PromotionReward $reward, float $baseQty): float
+    {
+        $conversion = $reward->conversion_to_base ? (float) $reward->conversion_to_base : 1;
+
+        if ($conversion <= 0) {
+            return $baseQty;
+        }
+
+        return $baseQty / $conversion;
+    }
+
+    private function focAllocationMatchesRewardUnit($allocationProductUnitId, $rewardProductUnitId): bool
+    {
+        if (empty($allocationProductUnitId) || empty($rewardProductUnitId)) {
+            return true;
+        }
+
+        return (int) $allocationProductUnitId === (int) $rewardProductUnitId;
+    }
+
     private function getPriceOverrideCartItems($cartItems, Promotion $promotion, $conditions)
     {
-        $promotionProductIds = $promotion->products
-            ->pluck('id')
-            ->map(fn ($productId) => (int) $productId)
-            ->all();
-        
-        Log::info('Price Override Promotion Product IDs', [
-            'promotion_product_ids' => $promotionProductIds
-        ]);
-
-        if (!empty($promotionProductIds)) {
-            
-            $returnCartItems = $cartItems->filter(
-                fn ($item) => in_array((int) $item['product_id'], $promotionProductIds, true)
-            );
+        if ($promotion->products->isNotEmpty()) {
+            $returnCartItems = $cartItems->filter(fn ($item) => $this->promotionAppliesToCartItem($promotion, $item));
 
             Log::info('Price Override Cart Items after Promotion Product ID filter', [
                 'cart_items' => $returnCartItems->values()->all()
@@ -1048,22 +1254,46 @@ class PromotionsController extends Controller
         ]);
 
         if (!empty($conditionProductIds)) {
-            return $cartItems->filter(
-                fn ($item) => in_array((int) $item['product_id'], $conditionProductIds, true)
-            );
+            return $cartItems->filter(function ($item) use ($conditions, $conditionProductIds) {
+                $matchingConditions = $conditions->filter(fn ($condition) =>
+                    in_array((int) $item['product_id'], $conditionProductIds, true)
+                    && (
+                        empty($condition->product_unit_id)
+                        || $this->sameNullableId($item['product_unit_id'] ?? null, $condition->product_unit_id)
+                    )
+                );
+
+                return $matchingConditions->isNotEmpty();
+            });
         }
 
         return $cartItems;
     }
 
-    private function getPriceOverrideUnitPrice(Promotion $promotion, $conditions): float
+    private function getPriceOverrideUnitPrice(Promotion $promotion, $conditions, ?int $tier = null): ?float
     {
+        if ($tier) {
+            $rewardOverridePrice = $promotion->rewards
+                ->where('tier', $tier)
+                ->pluck('override_price')
+                ->filter(fn ($price) => !is_null($price))
+                ->first();
+
+            if (!is_null($rewardOverridePrice)) {
+                return (float) $rewardOverridePrice;
+            }
+        }
+
         $quantityTarget = $conditions
             ->whereIn('condition_type', ['ITEM_QTY', 'ORDER_QTY'])
             ->pluck('target_value')
             ->filter(fn ($targetValue) => (float) $targetValue > 0)
             ->map(fn ($targetValue) => (float) $targetValue)
             ->min();
+
+        if (is_null($promotion->override_price)) {
+            return null;
+        }
 
         if (!$quantityTarget) {
             return (float) $promotion->override_price;
@@ -1146,6 +1376,228 @@ class PromotionsController extends Controller
         }
 
         return $tiers;
+    }
+
+    private function normalizePromotionProductsInput(Request $request): void
+    {
+        foreach (['products', 'promotion_products'] as $field) {
+            if (!$request->has($field) || !is_string($request->{$field})) {
+                continue;
+            }
+
+            $decoded = json_decode($request->{$field}, true);
+
+            if (json_last_error() === JSON_ERROR_NONE && is_array($decoded)) {
+                $request->merge([$field => $decoded]);
+            }
+        }
+
+        $products = $request->input('products');
+
+        if (!is_array($products) || empty($products)) {
+            return;
+        }
+
+        $hasObjectRows = collect($products)->contains(fn ($item) => is_array($item));
+
+        if (!$hasObjectRows) {
+            return;
+        }
+
+        $promotionProducts = collect($products)
+            ->filter(fn ($item) => is_array($item) && !empty($item['product_id']))
+            ->map(fn ($item) => [
+                'product_id' => (int) $item['product_id'],
+                'product_unit_id' => $item['product_unit_id'] ?? null,
+                'unit_id' => $item['unit_id'] ?? null,
+            ])
+            ->values()
+            ->all();
+
+        $request->merge([
+            'promotion_products' => $promotionProducts,
+            'products' => collect($promotionProducts)
+                ->pluck('product_id')
+                ->unique()
+                ->values()
+                ->all(),
+        ]);
+    }
+
+    private function syncPromotionProducts(Promotion $promotion, array $validated): void
+    {
+        $rows = collect($validated['promotion_products'] ?? [])
+            ->when(
+                empty($validated['promotion_products']) && array_key_exists('products', $validated),
+                fn ($collection) => collect($validated['products'] ?? [])->map(fn ($productId) => [
+                    'product_id' => (int) $productId,
+                    'product_unit_id' => null,
+                    'unit_id' => null,
+                ])
+            )
+            ->map(function ($row) use ($promotion) {
+                $uomPayload = $this->promotionUomPayload($row);
+
+                return [
+                    'promotion_id' => $promotion->id,
+                    'product_id' => (int) $row['product_id'],
+                    'product_unit_id' => $uomPayload['product_unit_id'],
+                    'unit_id' => $uomPayload['unit_id'],
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ];
+            })
+            ->unique(fn ($row) => implode(':', [
+                $row['product_id'],
+                $row['product_unit_id'] ?? 'null',
+                $row['unit_id'] ?? 'null',
+            ]))
+            ->values()
+            ->all();
+
+        DB::table('promotions_products')
+            ->where('promotion_id', $promotion->id)
+            ->delete();
+
+        if (!empty($rows)) {
+            DB::table('promotions_products')->insert($rows);
+        }
+    }
+
+    private function promotionUomPayload(array $data): array
+    {
+        $productUnitId = !empty($data['product_unit_id']) ? (int) $data['product_unit_id'] : null;
+
+        if ($productUnitId) {
+            $productUnit = ProductUnit::with('unit')->findOrFail($productUnitId);
+
+            return [
+                'product_unit_id' => $productUnit->id,
+                'unit_id' => $productUnit->unit_id,
+                'unit_name' => $productUnit->unit->name ?? ($data['unit_name'] ?? null),
+                'conversion_to_base' => $productUnit->conversion_to_base,
+            ];
+        }
+
+        return [
+            'product_unit_id' => null,
+            'unit_id' => $data['unit_id'] ?? null,
+            'unit_name' => $data['unit_name'] ?? null,
+            'conversion_to_base' => $data['conversion_to_base'] ?? null,
+        ];
+    }
+
+    private function promotionFocAllocationPayload(array $allocation): array
+    {
+        $uomPayload = $this->promotionUomPayload($allocation);
+        $unitQuantity = array_key_exists('unit_quantity', $allocation)
+            ? (float) $allocation['unit_quantity']
+            : null;
+        $conversion = $uomPayload['conversion_to_base'] ?? ($allocation['conversion_to_base'] ?? null);
+        $baseQuantity = array_key_exists('base_quantity', $allocation)
+            ? (float) $allocation['base_quantity']
+            : null;
+
+        if (!is_null($unitQuantity) && !is_null($conversion)) {
+            $baseQuantity = $unitQuantity * (float) $conversion;
+        }
+
+        $allocatedQty = !is_null($baseQuantity)
+            ? (int) round($baseQuantity)
+            : (int) ($allocation['allocated_qty'] ?? 0);
+
+        return [
+            'product_id' => (int) $allocation['product_id'],
+            ...$uomPayload,
+            'unit_quantity' => $unitQuantity,
+            'base_quantity' => $baseQuantity,
+            'allocated_qty' => $allocatedQty,
+        ];
+    }
+
+    private function applyFocAllocationConflictScope($query, ?int $productUnitId)
+    {
+        if (is_null($productUnitId)) {
+            return $query;
+        }
+
+        return $query->where(function ($subQuery) use ($productUnitId) {
+            $subQuery->whereNull('product_unit_id')
+                ->orWhere('product_unit_id', $productUnitId);
+        });
+    }
+
+    private function validatePromotionProductUnits(array $validated): void
+    {
+        $items = collect($validated['promotion_products'] ?? []);
+
+        foreach ($validated['tiers'] ?? [] as $tier) {
+            if (!empty($tier['condition'])) {
+                $items->push($tier['condition']);
+            }
+
+            foreach ($tier['conditions'] ?? [] as $condition) {
+                $items->push($condition);
+            }
+
+            if (!empty($tier['reward'])) {
+                $items->push($tier['reward']);
+            }
+
+            foreach ($tier['rewards'] ?? [] as $reward) {
+                $items->push($reward);
+            }
+        }
+
+        foreach ($validated['foc_allocations'] ?? [] as $allocation) {
+            $items->push($allocation);
+        }
+
+        $productUnitIds = $items
+            ->pluck('product_unit_id')
+            ->filter()
+            ->map(fn ($productUnitId) => (int) $productUnitId)
+            ->unique()
+            ->values();
+
+        if ($productUnitIds->isEmpty()) {
+            return;
+        }
+
+        $productUnits = ProductUnit::whereIn('id', $productUnitIds)
+            ->pluck('product_id', 'id');
+
+        foreach ($items as $item) {
+            if (empty($item['product_unit_id']) || empty($item['product_id'])) {
+                continue;
+            }
+
+            $productUnitId = (int) $item['product_unit_id'];
+            $productId = (int) $item['product_id'];
+
+            if ((int) ($productUnits[$productUnitId] ?? 0) !== $productId) {
+                throw ValidationException::withMessages([
+                    'product_unit_id' => "Product unit {$productUnitId} does not belong to product {$productId}.",
+                ]);
+            }
+        }
+    }
+
+    private function hasTierOverridePrice(array $validated): bool
+    {
+        foreach ($validated['tiers'] ?? [] as $tier) {
+            if (isset($tier['reward']['override_price'])) {
+                return true;
+            }
+
+            foreach ($tier['rewards'] ?? [] as $reward) {
+                if (isset($reward['override_price'])) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 
     private function syncPromotionBranches(Promotion $promotion, string $scopeType, array $branchIds): array
@@ -1360,6 +1812,7 @@ class PromotionsController extends Controller
             foreach ($conditions as $conditionIndex => $condition) {
                 $conditionPayload = [
                     'product_id' => $condition['product_id'] ?? null,
+                    ...$this->promotionUomPayload($condition),
                     'group_no' => $condition['group_no'] ?? ($conditionIndex + 1),
                     'condition_type' => $condition['condition_type'],
                     'operator' => $condition['operator'] ?? '>=',
@@ -1384,8 +1837,10 @@ class PromotionsController extends Controller
                 $rewardPayload = [
                     'reward_type' => $promotion->promo_type === 'FOC' ? 'FREE_PRODUCT' : 'DISCOUNT',
                     'product_id' => $reward['product_id'] ?? null,
+                    ...$this->promotionUomPayload($reward),
                     'reward_qty' => $reward['reward_qty'] ?? null,
                     'reward_value' => $reward['reward_value'] ?? null,
+                    'override_price' => $reward['override_price'] ?? null,
                     'tier' => $tier,
                 ];
 
@@ -1459,10 +1914,13 @@ class PromotionsController extends Controller
     private function createPromotionFocAllocations(Promotion $promotion, array $focAllocations, array $warehouseIds): void
     {
         foreach ($focAllocations as $allocation) {
-            $productId = (int) $allocation['product_id'];
-            $qty = (int) $allocation['allocated_qty'];
+            $allocationPayload = $this->promotionFocAllocationPayload($allocation);
+            $productId = (int) $allocationPayload['product_id'];
+            $productUnitId = $allocationPayload['product_unit_id'] ?? null;
+            $qty = (int) $allocationPayload['allocated_qty'];
 
             $exists = PromotionFocAllocation::where('product_id', $productId)
+                ->where(fn ($query) => $this->applyFocAllocationConflictScope($query, $productUnitId))
                 ->where('promotion_id', '!=', $promotion->id)
                 ->whereHas('promotion', fn($q) => $q
                     ->whereNull('void_at')
@@ -1482,8 +1940,7 @@ class PromotionsController extends Controller
 
                 PromotionFocAllocation::create([
                     'promotion_id' => $promotion->id,
-                    'product_id' => $productId,
-                    'allocated_qty' => $qty,
+                    ...$allocationPayload,
                     'used_qty' => 0,
                     'allocated_warehouse_id' => (int) $warehouseId,
                 ]);
@@ -1496,10 +1953,13 @@ class PromotionsController extends Controller
         $incomingAllocationIds = [];
 
         foreach ($focAllocations as $allocation) {
-            $productId = (int) $allocation['product_id'];
-            $qty = (int) $allocation['allocated_qty'];
+            $allocationPayload = $this->promotionFocAllocationPayload($allocation);
+            $productId = (int) $allocationPayload['product_id'];
+            $productUnitId = $allocationPayload['product_unit_id'] ?? null;
+            $qty = (int) $allocationPayload['allocated_qty'];
 
             $exists = PromotionFocAllocation::where('product_id', $productId)
+                ->where(fn ($query) => $this->applyFocAllocationConflictScope($query, $productUnitId))
                 ->where('promotion_id', '!=', $promotion->id)
                 ->whereHas('promotion', fn($q) => $q
                     ->whereNull('void_at')
@@ -1529,6 +1989,7 @@ class PromotionsController extends Controller
 
                 $oldRemaining = (int) $existingAllocation->allocated_qty - (int) $existingAllocation->used_qty;
                 $samePool = (int) $existingAllocation->product_id === $productId
+                    && (int) ($existingAllocation->product_unit_id ?? 0) === (int) ($productUnitId ?? 0)
                     && (int) $existingAllocation->allocated_warehouse_id === $warehouseId;
 
                 if (!$samePool) {
@@ -1556,8 +2017,7 @@ class PromotionsController extends Controller
                 }
 
                 $existingAllocation->update([
-                    'product_id' => $productId,
-                    'allocated_qty' => $qty,
+                    ...$allocationPayload,
                     'allocated_warehouse_id' => $warehouseId,
                 ]);
 
@@ -1581,6 +2041,7 @@ class PromotionsController extends Controller
 
                 $existingAllocation = PromotionFocAllocation::where('promotion_id', $promotion->id)
                     ->where('product_id', $productId)
+                    ->where('product_unit_id', $productUnitId)
                     ->where('allocated_warehouse_id', $warehouseId)
                     ->lockForUpdate()
                     ->first();
@@ -1600,7 +2061,7 @@ class PromotionsController extends Controller
                     }
 
                     $existingAllocation->update([
-                        'allocated_qty' => $qty,
+                        ...$allocationPayload,
                     ]);
 
                     $incomingAllocationIds[] = $existingAllocation->id;
@@ -1612,8 +2073,7 @@ class PromotionsController extends Controller
 
                 $newAllocation = PromotionFocAllocation::create([
                     'promotion_id' => $promotion->id,
-                    'product_id' => $productId,
-                    'allocated_qty' => $qty,
+                    ...$allocationPayload,
                     'used_qty' => 0,
                     'allocated_warehouse_id' => $warehouseId,
                 ]);

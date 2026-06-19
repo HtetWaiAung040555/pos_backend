@@ -57,6 +57,14 @@ class PromotionResource extends JsonResource
                     'id' => $allocation->id,
                     'promotion_id' => $allocation->promotion_id,
                     'product_id' => $allocation->product_id,
+                    'uom' => [
+                        'product_unit_id' => $allocation->product_unit_id,
+                        'unit_id' => $allocation->unit_id,
+                        'unit_name' => $allocation->unit_name,
+                        'unit_quantity' => $allocation->unit_quantity,
+                        'base_quantity' => $allocation->base_quantity,
+                        'conversion_to_base' => $allocation->conversion_to_base,
+                    ],
                     'product' => $allocation->product ? [
                         'id' => $allocation->product->id,
                         'name' => $allocation->product->name,
@@ -81,6 +89,8 @@ class PromotionResource extends JsonResource
                     'sec_prop' => $product->sec_prop,
                     'price' => $product->price,
                     'barcode' => $product->barcode,
+                    'promotion_product_unit_id' => $product->pivot->product_unit_id ?? null,
+                    'promotion_unit_id' => $product->pivot->unit_id ?? null,
                     'image_url' => $product->image ? url($product->image) : url('assets/img/products/default.png'),
                     'status' => $product->status ? [
                         'id'   => $product->status->id,

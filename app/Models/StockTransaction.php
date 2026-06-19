@@ -13,10 +13,15 @@ class StockTransaction extends Model
     protected $primaryKey = "id";
     protected $fillable = [
         "inventory_id",
+        "product_unit_id",
+        "unit_id",
         "reference_id",
         "reference_type",
         "reference_date",
         "quantity_change",
+        "unit_quantity",
+        "base_quantity",
+        "conversion_to_base",
         "reason",
         "type",
         "created_by",
@@ -25,6 +30,16 @@ class StockTransaction extends Model
     public function inventory()
     {
         return $this->belongsTo(Inventory::class);
+    }
+
+    public function productUnit()
+    {
+        return $this->belongsTo(ProductUnit::class);
+    }
+
+    public function unit()
+    {
+        return $this->belongsTo(Unit::class);
     }
 
     public function sale()

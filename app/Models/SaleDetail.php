@@ -16,6 +16,14 @@ class SaleDetail extends Model
         'inventory_id',
         'product_id',
         'quantity',
+        'product_unit_id',
+        'unit_id',
+        'unit_name',
+        'unit_quantity',
+        'base_quantity',
+        'conversion_to_base',
+        'unit_barcode',
+        'price_range_id',
         'price',
         'discount_amount',
         'discount_price',
@@ -37,6 +45,21 @@ class SaleDetail extends Model
     public function product()
     {
         return $this->belongsTo(Product::class);
+    }
+
+    public function productUnit()
+    {
+        return $this->belongsTo(ProductUnit::class);
+    }
+
+    public function unit()
+    {
+        return $this->belongsTo(Unit::class);
+    }
+
+    public function priceRange()
+    {
+        return $this->belongsTo(ProductUnitPriceRange::class, 'price_range_id');
     }
 
     public function promotion()

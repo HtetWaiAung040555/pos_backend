@@ -6,37 +6,34 @@ use App\Http\Resources\Concerns\FormatsLocalDateTime;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
-class ProductResource extends JsonResource
+class ProductUnitResource extends JsonResource
 {
     use FormatsLocalDateTime;
 
     public function toArray(Request $request): array
     {
         return [
-            'id'         => $this->id,
-            'name'       => $this->name,
+            'id' => $this->id,
+            'product_id' => $this->product_id,
+            'product' => $this->whenLoaded('product', fn () => [
+                'id' => $this->product->id,
+                'name' => $this->product->name,
+            ]),
             'unit_id' => [
                 'id' => $this->unit->id ?? null,
-                'name' => $this->unit->name ?? null
+                'name' => $this->unit->name ?? null,
             ],
-            'sec_prop'   => $this->sec_prop,
-
-            'category_id' => [
-                'id' => $this->category->id ?? null,
-                'name' => $this->category->name ?? null
-            ],
-
+            'barcode' => $this->barcode,
+            'conversion_to_base' => $this->conversion_to_base,
+            'price' => $this->price,
+            'old_price' => $this->old_price,
             'purchase_price' => $this->purchase_price,
             'old_purchase_price' => $this->old_purchase_price,
-            'price'      => $this->price,
-            'old_price'  => $this->old_price,
-            'barcode'    => $this->barcode,
-            'default_product_unit_id' => $this->default_product_unit_id,
-            'default_product_unit' => new ProductUnitResource($this->whenLoaded('defaultProductUnit')),
-            'uom_enabled' => $this->uom_enabled,
-            'product_units' => ProductUnitResource::collection($this->whenLoaded('productUnits')),
-            'image_url'  => $this->image ? url($this->image) : url('assets/img/products/default.png'),
-            
+            'is_base_unit' => $this->is_base_unit,
+            'is_default_sale_unit' => $this->is_default_sale_unit,
+            'sort_order' => $this->sort_order,
+            'price_ranges' => ProductUnitPriceRangeResource::collection($this->whenLoaded('priceRanges')),
+
             'status' => [
                 'id' => $this->status->id ?? null,
                 'name' => $this->status->name ?? null,
@@ -46,7 +43,7 @@ class ProductResource extends JsonResource
                 'id' => $this->createdBy->id ?? null,
                 'name' => $this->createdBy->name ?? null,
             ],
-            
+
             'updated_by' => [
                 'id' => $this->updatedBy->id ?? null,
                 'name' => $this->updatedBy->name ?? null,

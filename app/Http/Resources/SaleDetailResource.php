@@ -24,6 +24,16 @@ class SaleDetailResource extends JsonResource
 
             'price' => $this->price,
             'quantity' => $this->quantity,
+            'uom' => [
+                'product_unit_id' => $this->product_unit_id,
+                'unit_id' => $this->unit_id,
+                'unit_name' => $this->unit_name,
+                'unit_quantity' => $this->unit_quantity,
+                'base_quantity' => $this->base_quantity,
+                'conversion_to_base' => $this->conversion_to_base,
+                'unit_barcode' => $this->unit_barcode,
+                'price_range_id' => $this->price_range_id,
+            ],
             'discount_price' => $this->discount_price,
             'discount_amount' => $this->discount_amount,
             'total' => $this->total,

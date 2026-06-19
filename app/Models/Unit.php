@@ -29,4 +29,9 @@ class Unit extends Model
     public function updatedBy() { 
         return $this->belongsTo(User::class, 'updated_by'); 
     }
+
+    public function productUnits()
+    {
+        return $this->hasMany(ProductUnit::class);
+    }
 }
