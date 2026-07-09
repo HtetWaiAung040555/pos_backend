@@ -14,10 +14,10 @@ use App\Models\PromotionReward;
 use App\Models\PromotionWarehouse;
 use App\Models\ProductUnit;
 use App\Models\Status;
+use App\Services\SellingPriceService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Validation\ValidationException;
 
 class PromotionsController extends Controller
@@ -707,6 +707,8 @@ class PromotionsController extends Controller
             'cart' => 'nullable|array',
         ]);
 
+        Log::info("Checking price with request data", $request->all());
+
         $cartItems = collect($request->cart ?? [])
             ->values()
             ->map(function ($item, $index) {
@@ -731,8 +733,6 @@ class PromotionsController extends Controller
             ]);
         }
 
-        $totalQty = $cartItems->sum('qty');
-        $totalAmount = $cartItems->sum(fn($i) => $i['qty'] * $i['price']);
         $warehouseId = $request->warehouse_id ? (int) $request->warehouse_id : null;
         $branchId = $request->branch_id ? (int) $request->branch_id : null;
 
@@ -759,6 +759,35 @@ class PromotionsController extends Controller
                 ]);
             }
         }
+
+        $priceResolver = app(SellingPriceService::class);
+        $cartItems = $cartItems->map(function ($item) use ($priceResolver, $branchId) {
+            $pricing = $priceResolver->resolve(
+                (int) $item['product_id'],
+                $branchId,
+                $item['product_unit_id'] ?? null,
+                (float) $item['qty'],
+                $item['unit_id'] ?? null
+            );
+
+            $item['submitted_price'] = isset($item['price']) ? (float) $item['price'] : null;
+            $item['original_price'] = (float) $pricing['price'];
+            $item['price'] = (float) $pricing['price'];
+            $item['price_source'] = $pricing['source'];
+            $item['product_unit_id'] = $pricing['product_unit_id'] ?? $item['product_unit_id'];
+            $item['unit_id'] = $pricing['unit_id'] ?? $item['unit_id'];
+            $item['unit_name'] = $pricing['unit_name'] ?? ($item['unit_name'] ?? null);
+            $item['conversion_to_base'] = $pricing['conversion_to_base'] ?? ($item['conversion_to_base'] ?? null);
+            $item['branch_product_id'] = $pricing['branch_product_id'] ?? null;
+            $item['branch_product_unit_price_id'] = $pricing['branch_product_unit_price_id'] ?? null;
+            $item['product_unit_price_range_id'] = $pricing['product_unit_price_range_id'] ?? null;
+            $item['branch_product_unit_price_range_id'] = $pricing['branch_product_unit_price_range_id'] ?? null;
+
+            return $item;
+        });
+
+        $totalQty = $cartItems->sum('qty');
+        $totalAmount = $cartItems->sum(fn($i) => $i['qty'] * $i['price']);
 
         $this->refreshPromotionLifecycleStatuses();
 
@@ -1055,7 +1084,34 @@ class PromotionsController extends Controller
             }
         }
 
+        $pricedItems = $cartItems->map(fn ($item) => [
+            'line_key' => $item['_promo_line_key'],
+            'product_id' => $item['product_id'],
+            'product_unit_id' => $item['product_unit_id'] ?? null,
+            'unit_id' => $item['unit_id'] ?? null,
+            'qty' => $item['qty'],
+            'price' => $item['original_price'],
+            'price_source' => $item['price_source'] ?? null,
+            'branch_product_id' => $item['branch_product_id'] ?? null,
+            'branch_product_unit_price_id' => $item['branch_product_unit_price_id'] ?? null,
+            'product_unit_price_range_id' => $item['product_unit_price_range_id'] ?? null,
+            'branch_product_unit_price_range_id' => $item['branch_product_unit_price_range_id'] ?? null,
+        ])->values();
+
+        Log::info("Price check result", [
+            'priced_items' => $pricedItems,
+            'items' => $productDiscounts,
+            'order' => [
+                'total_discount' => $orderDiscountAmount,
+                'subtotal_after_product_discounts' => $discountedProductTotal,
+                'final_amount' => $finalOrderAmount,
+                'applied_promotions' => $orderPromotions
+            ],
+            'foc_items' => $freeItems
+        ]);
+
         return response()->json([
+            'priced_items' => $pricedItems,
             'items' => $productDiscounts,
             'order' => [
                 'total_discount' => $orderDiscountAmount,

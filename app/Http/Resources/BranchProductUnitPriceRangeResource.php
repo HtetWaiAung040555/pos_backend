@@ -6,7 +6,7 @@ use App\Http\Resources\Concerns\FormatsLocalDateTime;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
-class BranchResource extends JsonResource
+class BranchProductUnitPriceRangeResource extends JsonResource
 {
     use FormatsLocalDateTime;
 
@@ -14,35 +14,25 @@ class BranchResource extends JsonResource
     {
         return [
             'id' => $this->id,
-            'name' => $this->name,
-            'phone' => $this->phone,
-            'location' => $this->location,
-
-            'warehouse' => [
-                'id' => $this->warehouse->id ?? null,
-                'name' => $this->warehouse->name ?? null,
-            ],
-
-            'branch_products' => BranchProductResource::collection($this->whenLoaded('branchProducts')),
-
+            'branch_product_unit_price_id' => $this->branch_product_unit_price_id,
+            'min_qty' => $this->min_qty,
+            'max_qty' => $this->max_qty,
+            'price' => $this->price,
+            'old_price' => $this->old_price,
             'status' => [
                 'id' => $this->status->id ?? null,
                 'name' => $this->status->name ?? null,
             ],
-
             'created_by' => [
                 'id' => $this->createdBy->id ?? null,
                 'name' => $this->createdBy->name ?? null,
             ],
-            
             'updated_by' => [
                 'id' => $this->updatedBy->id ?? null,
                 'name' => $this->updatedBy->name ?? null,
             ],
-
             'created_at' => $this->toLocalDateTime($this->created_at),
             'updated_at' => $this->toLocalDateTime($this->updated_at),
-            
         ];
     }
 }

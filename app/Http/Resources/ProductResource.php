@@ -35,6 +35,7 @@ class ProductResource extends JsonResource
             'default_product_unit' => new ProductUnitResource($this->whenLoaded('defaultProductUnit')),
             'uom_enabled' => $this->uom_enabled,
             'product_units' => ProductUnitResource::collection($this->whenLoaded('productUnits')),
+            'branch_products' => BranchProductResource::collection($this->whenLoaded('branchProducts')),
             'image_url'  => $this->image ? url($this->image) : url('assets/img/products/default.png'),
             
             'status' => [

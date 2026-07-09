@@ -53,6 +53,11 @@ class ProductUnit extends Model
         return $this->hasMany(ProductUnitPriceRange::class);
     }
 
+    public function branchUnitPrices()
+    {
+        return $this->hasMany(BranchProductUnitPrice::class);
+    }
+
     public function status()
     {
         return $this->belongsTo(Status::class);

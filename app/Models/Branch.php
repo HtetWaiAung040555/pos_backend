@@ -25,6 +25,16 @@ class Branch extends Model
         return $this->belongsTo(Warehouse::class);
     }
 
+    public function branchProducts()
+    {
+        return $this->hasMany(BranchProduct::class);
+    }
+
+    public function sales()
+    {
+        return $this->hasMany(Sale::class);
+    }
+
     public function status() {
         return $this->belongsTo(Status::class);
     }

@@ -5,16 +5,16 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
-class ProductUnitPriceRange extends Model
+class BranchProduct extends Model
 {
     use HasFactory;
 
-    protected $table = 'product_unit_price_ranges';
+    protected $table = 'branch_products';
     protected $primaryKey = 'id';
+
     protected $fillable = [
-        'product_unit_id',
-        'min_qty',
-        'max_qty',
+        'branch_id',
+        'product_id',
         'price',
         'old_price',
         'status_id',
@@ -23,15 +23,23 @@ class ProductUnitPriceRange extends Model
     ];
 
     protected $casts = [
-        'min_qty' => 'decimal:6',
-        'max_qty' => 'decimal:6',
         'price' => 'decimal:2',
         'old_price' => 'decimal:2',
     ];
 
-    public function productUnit()
+    public function branch()
     {
-        return $this->belongsTo(ProductUnit::class);
+        return $this->belongsTo(Branch::class);
+    }
+
+    public function product()
+    {
+        return $this->belongsTo(Product::class);
+    }
+
+    public function unitPrices()
+    {
+        return $this->hasMany(BranchProductUnitPrice::class);
     }
 
     public function priceChangeProducts()

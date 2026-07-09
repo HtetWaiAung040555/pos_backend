@@ -47,6 +47,11 @@ class Product extends Model
         return $this->belongsTo(ProductUnit::class, 'default_product_unit_id');
     }
 
+    public function branchProducts()
+    {
+        return $this->hasMany(BranchProduct::class);
+    }
+
     public function category() {
         return $this->belongsTo(Category::class);
     }
@@ -72,7 +77,21 @@ class Product extends Model
     public function priceChanges()
     {
         return $this->belongsToMany(PriceChange::class, 'price_changes_products', 'product_id','price_change_id')
-        ->withPivot('old_price', 'new_price')
+        ->withPivot(
+            'branch_id',
+            'branch_product_id',
+            'product_unit_id',
+            'branch_product_unit_price_id',
+            'product_unit_price_range_id',
+            'branch_product_unit_price_range_id',
+            'unit_id',
+            'unit_name',
+            'conversion_to_base',
+            'min_qty',
+            'max_qty',
+            'old_price',
+            'new_price'
+        )
         ->withTimestamps();
     }
 

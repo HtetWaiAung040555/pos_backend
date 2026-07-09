@@ -16,6 +16,7 @@ class Sale extends Model
 
     protected $fillable = [
         'id',
+        'branch_id',
         'warehouse_id',
         'customer_id',
         'total_amount',
@@ -75,6 +76,11 @@ class Sale extends Model
     public function warehouse()
     {
         return $this->belongsTo(Warehouse::class);
+    }
+
+    public function branch()
+    {
+        return $this->belongsTo(Branch::class);
     }
 
     public function customer()

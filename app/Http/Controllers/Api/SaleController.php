@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Http\Resources\SaleResource;
+use App\Models\Branch;
 use App\Models\Inventory;
 use App\Models\Product;
 use App\Models\Promotion;
@@ -13,6 +14,7 @@ use App\Models\StockTransaction;
 use App\Models\CustomerTransaction;
 use App\Models\PromotionFocAllocation;
 use App\Models\PromotionReward;
+use App\Services\SellingPriceService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -30,6 +32,7 @@ class SaleController extends Controller
             ->with([
                 'customer',
                 'status',
+                'branch',
                 'warehouse',
                 'paymentMethod',
                 'details.product',
@@ -63,6 +66,14 @@ class SaleController extends Controller
             'applied_promotions' => 'nullable|array',
             'products'    => 'required|array|min:1',
             'products.*.product_id' => 'required|exists:products,id',
+            'products.*.product_unit_id' => 'nullable|exists:product_units,id',
+            'products.*.unit_id' => 'nullable|exists:units,id',
+            'products.*.unit_name' => 'nullable|string|max:255',
+            'products.*.unit_quantity' => 'nullable|numeric|min:0',
+            'products.*.base_quantity' => 'nullable|numeric|min:0',
+            'products.*.conversion_to_base' => 'nullable|numeric|min:0',
+            'products.*.unit_barcode' => 'nullable|string|max:255',
+            'products.*.price_range_id' => 'nullable|exists:product_unit_price_ranges,id',
             'products.*.quantity'   => 'required|integer|min:1',
             'products.*.price' => 'required_unless:products.*.is_foc,true|numeric|min:0',
             'products.*.original_price' => 'nullable|numeric|min:0',
@@ -73,6 +84,8 @@ class SaleController extends Controller
             'products.*.reward_id' => 'nullable|exists:promotion_rewards,id',
         ]);
 
+        Log::info("Creating new sale", $request->all());
+
         DB::beginTransaction();
 
         try {
@@ -81,7 +94,14 @@ class SaleController extends Controller
             $createdBy  = $request->created_by;
             $updatedBy  = $request->updated_by ?? $createdBy;
             $warehouseId = $request->warehouse_id;
+            $branchId = $this->resolveSaleBranchId($request->branch_id, $warehouseId);
             $isSync = (bool) ($request->is_synced ?? false);
+
+            $request->merge(['branch_id' => $branchId]);
+
+            if (!$isSync) {
+                $this->applySellingPricesToSaleRequest($request);
+            }
 
             $promotionResult = $isSync
                 ? $this->submittedPromotionResult($request)
@@ -89,6 +109,7 @@ class SaleController extends Controller
 
             if (!$isSync) {
                 $this->validateSubmittedPromotionResult($request, $promotionResult);
+                $this->applyPromotionResultToSaleRequest($request, $promotionResult);
             }
 
             $productIds = collect($request->products)
@@ -121,6 +142,7 @@ class SaleController extends Controller
 
             $sale = Sale::create([
                 'id' => $request->id,
+                'branch_id' => $branchId,
                 'warehouse_id' => $warehouseId,
                 'customer_id' => $request->customer_id,
                 'total_amount' => $totalAmount,
@@ -200,7 +222,7 @@ class SaleController extends Controller
 
                         $inventory->decrement('foc_qty', $deductQty);
 
-                        $saleDetails[] = [
+                        $saleDetails[] = array_merge([
                             'sale_id' => $sale->id,
                             'inventory_id' => $inventory->id,
                             'product_id' => $product->id,
@@ -214,7 +236,7 @@ class SaleController extends Controller
                             'total' => 0,
                             'created_at' => now(),
                             'updated_at' => now()
-                        ];
+                        ], $this->saleDetailUomSnapshot($item, $deductQty));
 
                         $stockTransactions[] = [
                             'inventory_id' => $inventory->id,
@@ -251,7 +273,7 @@ class SaleController extends Controller
 
                             $inventory->decrement('qty', $deductQty);
 
-                            $saleDetails[] = [
+                            $saleDetails[] = array_merge([
                                 'sale_id' => $sale->id,
                                 'inventory_id' => $inventory->id,
                                 'product_id' => $product->id,
@@ -265,7 +287,7 @@ class SaleController extends Controller
                                 'total' => 0,
                                 'created_at' => now(),
                                 'updated_at' => now()
-                            ];
+                            ], $this->saleDetailUomSnapshot($item, $deductQty));
 
                             $stockTransactions[] = [
                                 'inventory_id' => $inventory->id,
@@ -308,7 +330,7 @@ class SaleController extends Controller
 
                         $negativeInventory->decrement('qty', $remainingQty);
 
-                        $saleDetails[] = [
+                        $saleDetails[] = array_merge([
                             'sale_id' => $sale->id,
                             'inventory_id' => $negativeInventory->id,
                             'product_id' => $product->id,
@@ -322,7 +344,7 @@ class SaleController extends Controller
                             'total' => 0,
                             'created_at' => now(),
                             'updated_at' => now()
-                        ];
+                        ], $this->saleDetailUomSnapshot($item, $remainingQty));
 
                         $stockTransactions[] = [
                             'inventory_id' => $negativeInventory->id,
@@ -364,7 +386,7 @@ class SaleController extends Controller
 
                     $inventory->decrement('qty', $deductQty);
 
-                    $saleDetails[] = [
+                    $saleDetails[] = array_merge([
                         'sale_id' => $sale->id,
                         'inventory_id' => $inventory->id,
                         'product_id' => $product->id,
@@ -378,7 +400,7 @@ class SaleController extends Controller
                         'total' => $price * $deductQty,
                         'created_at' => now(),
                         'updated_at' => now()
-                    ];
+                    ], $this->saleDetailUomSnapshot($item, $deductQty));
 
                     $stockTransactions[] = [
                         'inventory_id' => $inventory->id,
@@ -414,7 +436,7 @@ class SaleController extends Controller
 
                         $inventory->decrement('foc_qty', $deductQty);
 
-                        $saleDetails[] = [
+                        $saleDetails[] = array_merge([
                             'sale_id' => $sale->id,
                             'inventory_id' => $inventory->id,
                             'product_id' => $product->id,
@@ -433,7 +455,7 @@ class SaleController extends Controller
                             'total' => $price * $deductQty,
                             'created_at' => now(),
                             'updated_at' => now()
-                        ];
+                        ], $this->saleDetailUomSnapshot($item, $deductQty));
 
                         $stockTransactions[] = [
                             'inventory_id' => $inventory->id,
@@ -471,7 +493,7 @@ class SaleController extends Controller
 
                     $negativeInventory->decrement('qty', $remainingQty);
 
-                    $saleDetails[] = [
+                    $saleDetails[] = array_merge([
                         'sale_id' => $sale->id,
                         'inventory_id' => $negativeInventory->id,
                         'product_id' => $product->id,
@@ -485,7 +507,7 @@ class SaleController extends Controller
                         'total' => $price * $remainingQty,
                         'created_at' => now(),
                         'updated_at' => now()
-                    ];
+                    ], $this->saleDetailUomSnapshot($item, $remainingQty));
 
                     $stockTransactions[] = [
                         'inventory_id' => $negativeInventory->id,
@@ -529,6 +551,7 @@ class SaleController extends Controller
             DB::commit();
 
             $freshSale = $sale->fresh([
+                'branch',
                 'warehouse',
                 'customer',
                 'status',
@@ -569,6 +592,7 @@ class SaleController extends Controller
     {
         $sale = Sale::with([
             'warehouse',
+            'branch',
             'customer',
             'status',
             'paymentMethod',
@@ -596,6 +620,14 @@ class SaleController extends Controller
             'updated_by'  => 'required|exists:users,id',
             'products'    => 'sometimes|array|min:1',
             'products.*.product_id' => 'required|exists:products,id',
+            'products.*.product_unit_id' => 'nullable|exists:product_units,id',
+            'products.*.unit_id' => 'nullable|exists:units,id',
+            'products.*.unit_name' => 'nullable|string|max:255',
+            'products.*.unit_quantity' => 'nullable|numeric|min:0',
+            'products.*.base_quantity' => 'nullable|numeric|min:0',
+            'products.*.conversion_to_base' => 'nullable|numeric|min:0',
+            'products.*.unit_barcode' => 'nullable|string|max:255',
+            'products.*.price_range_id' => 'nullable|exists:product_unit_price_ranges,id',
             'products.*.quantity'   => 'required|integer|min:1',
             'products.*.price' => 'required_unless:products.*.is_foc,true|numeric|min:0',
             'products.*.original_price' => 'nullable|numeric|min:0',
@@ -622,8 +654,19 @@ class SaleController extends Controller
             $saleDate  = $request->sale_date ?? $sale->sale_date;
             $oldTotal  = $sale->total_amount;
             $oldPayment= $sale->payment_id;
+            $warehouseId = $request->warehouse_id ?? $sale->warehouse_id;
+            $branchId = $this->resolveSaleBranchId($request->branch_id ?? $sale->branch_id, $warehouseId);
             $isSync = (bool) ($request->is_synced ?? false);
             $promotionResult = null;
+
+            $request->merge([
+                'branch_id' => $branchId,
+                'warehouse_id' => $warehouseId,
+            ]);
+
+            if (!$isSync && $request->has('products')) {
+                $this->applySellingPricesToSaleRequest($request, $warehouseId);
+            }
 
             /* Recalculate New Total */
 
@@ -675,7 +718,7 @@ class SaleController extends Controller
                 $promotionRequest = $request->duplicate(
                     null,
                     array_merge($request->all(), [
-                        'warehouse_id' => $request->warehouse_id ?? $sale->warehouse_id,
+                        'warehouse_id' => $warehouseId,
                     ])
                 );
 
@@ -685,6 +728,7 @@ class SaleController extends Controller
 
                 if (!$isSync) {
                     $this->validateSubmittedPromotionResult($promotionRequest, $promotionResult);
+                    $this->applyPromotionResultToSaleRequest($request, $promotionResult);
                 }
 
                 foreach ($request->products as $item) {
@@ -738,7 +782,7 @@ class SaleController extends Controller
                             $approvedQty = $this->getAllowedFocQty(
                                 $rewardId,
                                 $remainingQty,
-                                (int) $sale->warehouse_id
+                                (int) $warehouseId
                             );
 
                             if ($approvedQty <= 0) {
@@ -750,7 +794,7 @@ class SaleController extends Controller
                         $totalDeducted = 0;
 
                         $focInventories = Inventory::where('product_id', $item['product_id'])
-                            ->where('warehouse_id', $sale->warehouse_id)
+                            ->where('warehouse_id', $warehouseId)
                             ->where('foc_qty', '>', 0)
                             ->orderByRaw('expired_date IS NULL')
                             ->orderBy('expired_date')
@@ -766,7 +810,7 @@ class SaleController extends Controller
 
                             $inventory->decrement('foc_qty', $deductQty);
 
-                            $saleDetails[] = [
+                            $saleDetails[] = array_merge([
                                 'sale_id' => $sale->id,
                                 'inventory_id' => $inventory->id,
                                 'product_id' => $item['product_id'],
@@ -780,7 +824,7 @@ class SaleController extends Controller
                                 'total' => 0,
                                 'created_at' => now(),
                                 'updated_at' => now()
-                            ];
+                            ], $this->saleDetailUomSnapshot($item, $deductQty));
 
                             $stockTransactions[] = [
                                 'inventory_id' => $inventory->id,
@@ -807,7 +851,7 @@ class SaleController extends Controller
                             $this->incrementUsedFocQty(
                                 $rewardId,
                                 $totalDeducted,
-                                (int) $sale->warehouse_id
+                                (int) $warehouseId
                             );
                         }
 
@@ -815,7 +859,7 @@ class SaleController extends Controller
                     }
 
                     $inventories = Inventory::where('product_id', $item['product_id'])
-                        ->where('warehouse_id', $sale->warehouse_id)
+                        ->where('warehouse_id', $warehouseId)
                         ->where('qty', '>', 0)
                         ->orderByRaw('expired_date IS NULL')
                         ->orderBy('expired_date')
@@ -831,7 +875,7 @@ class SaleController extends Controller
 
                         $inventory->decrement('qty', $deductQty);
 
-                        $saleDetails[] = [
+                        $saleDetails[] = array_merge([
                             'sale_id' => $sale->id,
                             'inventory_id' => $inventory->id,
                             'product_id' => $item['product_id'],
@@ -845,7 +889,7 @@ class SaleController extends Controller
                             'total' => $price * $deductQty,
                             'created_at' => now(),
                             'updated_at' => now()
-                        ];
+                        ], $this->saleDetailUomSnapshot($item, $deductQty));
 
                         $stockTransactions[] = [
                             'inventory_id' => $inventory->id,
@@ -868,7 +912,7 @@ class SaleController extends Controller
                         $negativeInventory = Inventory::firstOrCreate(
                             [
                                 'product_id' => $item['product_id'],
-                                'warehouse_id' => $sale->warehouse_id,
+                                'warehouse_id' => $warehouseId,
                                 'expired_date' => null
                             ],
                             [
@@ -880,7 +924,7 @@ class SaleController extends Controller
 
                         $negativeInventory->decrement('qty', $remainingQty);
 
-                        $saleDetails[] = [
+                        $saleDetails[] = array_merge([
                             'sale_id' => $sale->id,
                             'inventory_id' => $negativeInventory->id,
                             'product_id' => $item['product_id'],
@@ -894,7 +938,7 @@ class SaleController extends Controller
                             'total' => $price * $remainingQty,
                             'created_at' => now(),
                             'updated_at' => now()
-                        ];
+                        ], $this->saleDetailUomSnapshot($item, $remainingQty));
 
                         $stockTransactions[] = [
                             'inventory_id' => $negativeInventory->id,
@@ -924,6 +968,8 @@ class SaleController extends Controller
             /* Update Sale */
 
             $sale->update([
+                'branch_id' => $branchId,
+                'warehouse_id' => $warehouseId,
                 'payment_id' => $request->payment_id ?? $sale->payment_id,
                 'paid_amount' => $paidAmount,
                 'total_amount' => $totalAmount,
@@ -967,6 +1013,7 @@ class SaleController extends Controller
             DB::commit();
 
             $freshSale = $sale->fresh([
+                'branch',
                 'warehouse',
                 'customer',
                 'status',
@@ -1094,6 +1141,7 @@ class SaleController extends Controller
             DB::commit();
 
             $freshSale = $sale->fresh([
+                'branch',
                 'warehouse',
                 'customer',
                 'status',
@@ -1149,6 +1197,10 @@ class SaleController extends Controller
                 $q->where('sales.warehouse_id', $request->warehouse_id);
             })
 
+            ->when($request->filled('branch_id'), function ($q) use ($request) {
+                $q->where('sales.branch_id', $request->branch_id);
+            })
+
             ->when($request->filled('product_search'), function ($q) use ($request) {
 
                 $keyword = $request->product_search;
@@ -1180,7 +1232,7 @@ class SaleController extends Controller
     {
         $sales = SaleController::build($request)
             ->select('sales.*')
-            ->with(['customer','details.product'])
+            ->with(['branch','warehouse','customer','details.product'])
             ->orderByDesc('sales.sale_date')
             ->get();
 
@@ -1204,13 +1256,88 @@ class SaleController extends Controller
         return response()->json($stats);
     }
 
+    private function applySellingPricesToSaleRequest(Request $request, ?int $warehouseId = null): void
+    {
+        $branchId = $request->branch_id ? (int) $request->branch_id : null;
+        $warehouseId ??= $request->warehouse_id ? (int) $request->warehouse_id : null;
+
+        if (!$branchId && $warehouseId) {
+            $branchId = Branch::where('warehouse_id', $warehouseId)->value('id');
+        }
+
+        if (!$branchId) {
+            return;
+        }
+
+        $priceResolver = app(SellingPriceService::class);
+        $products = collect($request->products ?? [])
+            ->map(function ($item) use ($priceResolver, $branchId) {
+                if (!empty($item['is_foc'])) {
+                    return $item;
+                }
+
+                $pricing = $priceResolver->resolve(
+                    (int) $item['product_id'],
+                    $branchId,
+                    !empty($item['product_unit_id']) ? (int) $item['product_unit_id'] : null,
+                    (float) ($item['quantity'] ?? 1),
+                    !empty($item['unit_id']) ? (int) $item['unit_id'] : null
+                );
+
+                $item['submitted_price'] = isset($item['price']) ? (float) $item['price'] : null;
+                $item['original_price'] = (float) $pricing['price'];
+                $item['price'] = (float) $pricing['price'];
+                $item['product_unit_id'] = $pricing['product_unit_id'] ?? ($item['product_unit_id'] ?? null);
+                $item['unit_id'] = $pricing['unit_id'] ?? ($item['unit_id'] ?? null);
+                $item['unit_name'] = $pricing['unit_name'] ?? ($item['unit_name'] ?? null);
+                $item['conversion_to_base'] = $pricing['conversion_to_base'] ?? ($item['conversion_to_base'] ?? null);
+                $item['price_source'] = $pricing['source'];
+                $item['branch_product_id'] = $pricing['branch_product_id'];
+                $item['branch_product_unit_price_id'] = $pricing['branch_product_unit_price_id'];
+                $item['product_unit_price_range_id'] = $pricing['product_unit_price_range_id'];
+                $item['branch_product_unit_price_range_id'] = $pricing['branch_product_unit_price_range_id'];
+
+                return $item;
+            })
+            ->values()
+            ->all();
+
+        $request->merge(['products' => $products]);
+    }
+
+    private function resolveSaleBranchId($branchId, ?int $warehouseId): ?int
+    {
+        $branchId = !empty($branchId) ? (int) $branchId : null;
+
+        if ($branchId) {
+            $branchWarehouseId = Branch::whereKey($branchId)->value('warehouse_id');
+
+            if ($warehouseId && (int) $branchWarehouseId !== (int) $warehouseId) {
+                throw ValidationException::withMessages([
+                    'warehouse_id' => 'warehouse_id must belong to the selected branch.',
+                ]);
+            }
+
+            return $branchId;
+        }
+
+        if (!$warehouseId) {
+            return null;
+        }
+
+        return Branch::where('warehouse_id', $warehouseId)->value('id');
+    }
+
     private function resolvePromotionResult(Request $request): array
     {
         $cart = collect($request->products ?? [])
             ->reject(fn ($item) => !empty($item['is_foc']))
             ->map(fn ($item) => [
                 'product_id' => (int) $item['product_id'],
+                'product_unit_id' => !empty($item['product_unit_id']) ? (int) $item['product_unit_id'] : null,
+                'unit_id' => !empty($item['unit_id']) ? (int) $item['unit_id'] : null,
                 'qty' => (int) $item['quantity'],
+                'base_qty' => (float) ($item['base_quantity'] ?? $item['quantity']),
                 'price' => (float) ($item['original_price'] ?? $item['price']),
                 'original_price' => isset($item['original_price'])
                     ? (float) $item['original_price']
@@ -1254,6 +1381,65 @@ class SaleController extends Controller
             ],
             'foc_items' => [],
         ];
+    }
+
+    private function applyPromotionResultToSaleRequest(Request $request, array $promotionResult): void
+    {
+        $discountsByLine = collect($promotionResult['items'] ?? [])
+            ->filter(fn ($item) => !empty($item['line_key']) && array_key_exists('discount_price', $item))
+            ->groupBy('line_key')
+            ->map(fn ($items) => $items->last());
+
+        $discountsByProduct = collect($promotionResult['items'] ?? [])
+            ->filter(fn ($item) => array_key_exists('discount_price', $item))
+            ->groupBy(fn ($item) => (int) ($item['product_id'] ?? 0))
+            ->map(fn ($items) => $items->last());
+
+        $products = collect($request->products ?? [])
+            ->values()
+            ->map(function ($item, $index) use ($discountsByLine, $discountsByProduct) {
+                if (!empty($item['is_foc'])) {
+                    return $item;
+                }
+
+                $lineKey = $this->saleItemPromotionKey($item, $index);
+                $discount = $discountsByLine[$lineKey]
+                    ?? $discountsByProduct[(int) ($item['product_id'] ?? 0)]
+                    ?? null;
+
+                if (!$discount) {
+                    unset(
+                        $item['promotion_id'],
+                        $item['promo_type'],
+                        $item['discount_type'],
+                        $item['discount_value'],
+                        $item['discount_price']
+                    );
+
+                    $item['discount_amount'] = 0;
+
+                    return $item;
+                }
+
+                $originalPrice = (float) ($item['original_price'] ?? $item['price'] ?? 0);
+                $discountPrice = (float) $discount['discount_price'];
+
+                $item['promotion_id'] = (int) $discount['promotion_id'];
+                $item['promo_type'] = $discount['promo_type'] ?? null;
+                $item['discount_type'] = $discount['discount_type'] ?? null;
+                $item['discount_value'] = isset($discount['discount_value']) ? (float) $discount['discount_value'] : null;
+                $item['discount_price'] = $discountPrice;
+                $item['discount_amount'] = max(0, $originalPrice - $discountPrice);
+
+                return $item;
+            })
+            ->all();
+
+        $request->merge([
+            'products' => $products,
+            'order_discount_amount' => (float) data_get($promotionResult, 'order.total_discount', 0),
+            'applied_promotions' => data_get($promotionResult, 'order.applied_promotions', []),
+        ]);
     }
 
     private function submittedPromotionResult(Request $request): array
@@ -1304,15 +1490,30 @@ class SaleController extends Controller
 
     private function validateSubmittedPromotionResult(Request $request, array $promotionResult): void
     {
-        $expectedProductPrices = collect($promotionResult['items'] ?? [])
-            ->filter(fn ($item) => array_key_exists('discount_price', $item))
-            ->reduce(function ($carry, $item) {
-                $carry[(int) $item['product_id']] = (float) $item['discount_price'];
+        $expectedProductDiscountsByLine = collect($promotionResult['items'] ?? [])
+            ->filter(fn ($item) => !empty($item['line_key']) && array_key_exists('discount_price', $item))
+            ->groupBy('line_key')
+            ->map(fn ($items) => $items->last());
 
-                return $carry;
-            }, []);
-        $expectedProductPromotionIds = collect($promotionResult['items'] ?? [])
-            ->groupBy(fn ($item) => (int) $item['product_id'])
+        $expectedProductDiscountsByProduct = collect($promotionResult['items'] ?? [])
+            ->filter(fn ($item) => array_key_exists('discount_price', $item))
+            ->groupBy(fn ($item) => (int) ($item['product_id'] ?? 0))
+            ->map(fn ($items) => $items->last());
+
+        $expectedProductPromotionIdsByLine = collect($promotionResult['items'] ?? [])
+            ->filter(fn ($item) => !empty($item['line_key']))
+            ->groupBy('line_key')
+            ->map(fn ($items) => $items
+                ->pluck('promotion_id')
+                ->filter()
+                ->map(fn ($promotionId) => (int) $promotionId)
+                ->unique()
+                ->values()
+                ->all()
+            );
+
+        $expectedProductPromotionIdsByProduct = collect($promotionResult['items'] ?? [])
+            ->groupBy(fn ($item) => (int) ($item['product_id'] ?? 0))
             ->map(fn ($items) => $items
                 ->pluck('promotion_id')
                 ->filter()
@@ -1324,34 +1525,33 @@ class SaleController extends Controller
 
         foreach (collect($request->products ?? [])->reject(fn ($item) => !empty($item['is_foc'])) as $index => $item) {
             $productId = (int) $item['product_id'];
+            $lineKey = $this->saleItemPromotionKey($item, $index);
             $submittedPromotionId = !empty($item['promotion_id']) ? (int) $item['promotion_id'] : null;
+            $expectedDiscount = $expectedProductDiscountsByLine[$lineKey]
+                ?? $expectedProductDiscountsByProduct[$productId]
+                ?? null;
+            $expectedPromotionIds = $expectedProductPromotionIdsByLine[$lineKey]
+                ?? $expectedProductPromotionIdsByProduct[$productId]
+                ?? [];
 
             if (
                 $submittedPromotionId
-                && !in_array($submittedPromotionId, $expectedProductPromotionIds[$productId] ?? [], true)
+                && !in_array($submittedPromotionId, $expectedPromotionIds, true)
             ) {
                 throw ValidationException::withMessages([
                     "products.{$index}.promotion_id" => "Promotion is not valid for product {$productId}.",
                 ]);
             }
 
-            if (!array_key_exists($productId, $expectedProductPrices)) {
+            if (!$expectedDiscount || !array_key_exists('discount_price', $expectedDiscount)) {
                 continue;
             }
 
-            if (!$submittedPromotionId) {
-                throw ValidationException::withMessages([
-                    "products.{$index}.promotion_id" => "Promotion ID is required for product {$productId}.",
-                ]);
-            }
-
-            if (!array_key_exists('discount_price', $item)) {
-                throw ValidationException::withMessages([
-                    "products.{$index}.discount_price" => "Promotion discount price is required for product {$productId}.",
-                ]);
-            }
-
-            if (!$this->moneyEquals((float) $item['discount_price'], $expectedProductPrices[$productId])) {
+            if (
+                $submittedPromotionId
+                && array_key_exists('discount_price', $item)
+                && !$this->moneyEquals((float) $item['discount_price'], (float) $expectedDiscount['discount_price'])
+            ) {
                 throw ValidationException::withMessages([
                     "products.{$index}.discount_price" => "Promotion discount price is invalid for product {$productId}.",
                 ]);
@@ -1361,7 +1561,7 @@ class SaleController extends Controller
         $expectedOrderDiscount = (float) data_get($promotionResult, 'order.total_discount', 0);
         $submittedOrderDiscount = (float) ($request->order_discount_amount ?? 0);
 
-        if (!$this->moneyEquals($submittedOrderDiscount, $expectedOrderDiscount)) {
+        if ($submittedOrderDiscount > 0 && !$this->moneyEquals($submittedOrderDiscount, $expectedOrderDiscount)) {
             throw ValidationException::withMessages([
                 'order_discount_amount' => 'Order discount amount does not match the current promotion result.',
             ]);
@@ -1514,6 +1714,41 @@ class SaleController extends Controller
     private function promotionFocKey($productId, $promotionId, $rewardId): string
     {
         return (int) $productId . ':' . (int) $promotionId . ':' . (int) $rewardId;
+    }
+
+    private function saleItemPromotionKey(array $item, int $index): string
+    {
+        return implode(':', [
+            $index,
+            (int) ($item['product_id'] ?? 0),
+            (int) ($item['product_unit_id'] ?? 0),
+        ]);
+    }
+
+    private function saleDetailUomSnapshot(array $item, float $quantity): array
+    {
+        $conversion = isset($item['conversion_to_base'])
+            ? (float) $item['conversion_to_base']
+            : null;
+
+        $baseQuantity = null;
+
+        if ($conversion !== null) {
+            $baseQuantity = $quantity * $conversion;
+        } elseif (isset($item['base_quantity'], $item['quantity']) && (float) $item['quantity'] > 0) {
+            $baseQuantity = (float) $item['base_quantity'] * ($quantity / (float) $item['quantity']);
+        }
+
+        return [
+            'product_unit_id' => !empty($item['product_unit_id']) ? (int) $item['product_unit_id'] : null,
+            'unit_id' => !empty($item['unit_id']) ? (int) $item['unit_id'] : null,
+            'unit_name' => $item['unit_name'] ?? null,
+            'unit_quantity' => $quantity,
+            'base_quantity' => $baseQuantity,
+            'conversion_to_base' => $conversion,
+            'unit_barcode' => $item['unit_barcode'] ?? null,
+            'price_range_id' => $item['price_range_id'] ?? $item['product_unit_price_range_id'] ?? null,
+        ];
     }
 
     private function moneyEquals(float $left, float $right): bool

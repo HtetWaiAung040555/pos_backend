@@ -6,7 +6,7 @@ use App\Http\Resources\Concerns\FormatsLocalDateTime;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
-class ProductUnitResource extends JsonResource
+class BranchProductResource extends JsonResource
 {
     use FormatsLocalDateTime;
 
@@ -14,42 +14,32 @@ class ProductUnitResource extends JsonResource
     {
         return [
             'id' => $this->id,
+            'branch_id' => $this->branch_id,
+            'branch' => $this->whenLoaded('branch', fn () => $this->branch ? [
+                'id' => $this->branch->id,
+                'name' => $this->branch->name,
+            ] : null),
             'product_id' => $this->product_id,
-            'product' => $this->whenLoaded('product', fn () => [
+            'product' => $this->whenLoaded('product', fn () => $this->product ? [
                 'id' => $this->product->id,
                 'name' => $this->product->name,
-            ]),
-            'unit_id' => [
-                'id' => $this->unit->id ?? null,
-                'name' => $this->unit->name ?? null,
-            ],
-            'barcode' => $this->barcode,
-            'conversion_to_base' => $this->conversion_to_base,
+                'barcode' => $this->product->barcode,
+            ] : null),
             'price' => $this->price,
             'old_price' => $this->old_price,
-            'purchase_price' => $this->purchase_price,
-            'old_purchase_price' => $this->old_purchase_price,
-            'is_base_unit' => $this->is_base_unit,
-            'is_default_sale_unit' => $this->is_default_sale_unit,
-            'sort_order' => $this->sort_order,
-            'price_ranges' => ProductUnitPriceRangeResource::collection($this->whenLoaded('priceRanges')),
-            'branch_unit_prices' => BranchProductUnitPriceResource::collection($this->whenLoaded('branchUnitPrices')),
-
+            'unit_prices' => BranchProductUnitPriceResource::collection($this->whenLoaded('unitPrices')),
             'status' => [
                 'id' => $this->status->id ?? null,
                 'name' => $this->status->name ?? null,
             ],
-
             'created_by' => [
                 'id' => $this->createdBy->id ?? null,
                 'name' => $this->createdBy->name ?? null,
             ],
-
             'updated_by' => [
                 'id' => $this->updatedBy->id ?? null,
                 'name' => $this->updatedBy->name ?? null,
             ],
-
             'created_at' => $this->toLocalDateTime($this->created_at),
             'updated_at' => $this->toLocalDateTime($this->updated_at),
         ];
