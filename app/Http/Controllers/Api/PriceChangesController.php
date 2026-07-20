@@ -13,6 +13,8 @@ use App\Models\Product;
 use App\Models\ProductUnit;
 use App\Models\ProductUnitPriceRange;
 use App\Models\Status;
+use App\Services\SalesPriceChangeEndService;
+use App\Services\SalesPriceChangePromotionConflictService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -21,6 +23,11 @@ use Illuminate\Validation\ValidationException;
 
 class PriceChangesController extends Controller
 {
+    public function __construct(
+        private readonly SalesPriceChangeEndService $endService,
+        private readonly SalesPriceChangePromotionConflictService $promotionConflictService
+    ) {}
+
     /**
      * Apply started sales price changes once their start time is reached.
      *
@@ -30,6 +37,7 @@ class PriceChangesController extends Controller
     public function applyStartedSalesPriceChanges(): array
     {
         $now = now();
+        $endingResult = $this->endService->processDue($now);
         $activeStatusId = Status::whereRaw('LOWER(name) = ?', ['active'])->value('id');
         $appliedStatusId = Status::whereRaw('LOWER(name) = ?', ['applied'])->value('id');
         $appliedPriceChanges = 0;
@@ -42,11 +50,13 @@ class PriceChangesController extends Controller
             'applied_status_id' => $appliedStatusId,
         ]);
 
-        if (!$activeStatusId) {
+        if (! $activeStatusId) {
             return [
                 'applied_price_changes' => $appliedPriceChanges,
                 'failed_price_changes' => $failedPriceChanges,
                 'applied_products' => $appliedProducts,
+                'ended_price_changes' => $endingResult['endedPriceChanges'],
+                'recalculated_prices' => $endingResult['recalculatedPrices'],
                 'checked_at' => $now->toDateTimeString(),
             ];
         }
@@ -59,6 +69,12 @@ class PriceChangesController extends Controller
                 $query->whereNull('start_at')
                     ->orWhere('start_at', '<=', $now);
             })
+            ->where(function ($query) use ($now) {
+                $query->whereNull('end_at')
+                    ->orWhere('end_at', '>', $now);
+            })
+            ->orderByRaw('COALESCE(start_at, created_at) ASC')
+            ->orderBy('created_at')
             ->get();
 
         foreach ($startedSalesChanges as $priceChange) {
@@ -97,8 +113,123 @@ class PriceChangesController extends Controller
             'applied_price_changes' => $appliedPriceChanges,
             'failed_price_changes' => $failedPriceChanges,
             'applied_products' => $appliedProducts,
+            'ended_price_changes' => $endingResult['endedPriceChanges'],
+            'recalculated_prices' => $endingResult['recalculatedPrices'],
             'checked_at' => $now->toDateTimeString(),
         ];
+    }
+
+    public function end(Request $request, string $id)
+    {
+        $validated = $request->validate([
+            'end_at' => 'nullable|date',
+            'ended_by' => 'nullable|integer',
+            'end_reason' => 'nullable|string|max:2000',
+        ]);
+
+        $authenticatedUserId = $request->user()?->getAuthIdentifier();
+
+        if (! $authenticatedUserId) {
+            abort(401, 'Unauthenticated.');
+        }
+
+        $priceChange = DB::transaction(function () use ($id, $validated, $authenticatedUserId) {
+            $priceChange = PriceChange::with(['status', 'products'])
+                ->lockForUpdate()
+                ->findOrFail($id);
+
+            // A retry after this workflow has already scheduled or completed the end is a no-op.
+            if ($priceChange->ended_by || $priceChange->ended_at) {
+                return $priceChange;
+            }
+
+            $now = now();
+            $statusName = strtolower((string) $priceChange->status?->name);
+            $isCurrentlyEffective = $priceChange->type === 'sale'
+                && $statusName === 'applied'
+                && ! $priceChange->void_at
+                && (! $priceChange->start_at || $priceChange->start_at->lte($now))
+                && (! $priceChange->end_at || $priceChange->end_at->gt($now));
+
+            if (! $isCurrentlyEffective) {
+                throw ValidationException::withMessages([
+                    'price_change' => 'Only an Applied and currently effective sales price change can be ended.',
+                ]);
+            }
+
+            $endAt = ! empty($validated['end_at'])
+                ? Carbon::parse($validated['end_at'])
+                : $now->copy();
+
+            if ($priceChange->start_at && $endAt->lte($priceChange->start_at)) {
+                throw ValidationException::withMessages([
+                    'end_at' => 'The end_at must be after start_at.',
+                ]);
+            }
+
+            $priceChange->forceFill([
+                'end_at' => $endAt,
+                'ended_by' => $authenticatedUserId,
+                'end_reason' => $validated['end_reason'] ?? null,
+            ])->save();
+
+            if ($endAt->lte($now)) {
+                $this->endService->finalize($priceChange, $now);
+            }
+
+            return $priceChange;
+        });
+
+        $priceChange->refresh()->load($this->priceChangeRelations());
+
+        return new PriceChangeResource($priceChange);
+    }
+
+    public function checkPromotionConflicts(Request $request)
+    {
+        $validated = $request->validate([
+            'type' => 'nullable|in:sale,purchase',
+            'start_at' => 'nullable|date',
+            'end_at' => 'nullable|date',
+            'products' => 'required|array|min:1',
+            'products.*.product_id' => 'required|exists:products,id',
+            'products.*.branch_id' => 'nullable|exists:branches,id',
+            'products.*.product_unit_id' => 'nullable|exists:product_units,id',
+        ]);
+
+        $startAt = ! empty($validated['start_at'])
+            ? Carbon::parse($validated['start_at'])
+            : now();
+        $endAt = ! empty($validated['end_at'])
+            ? Carbon::parse($validated['end_at'])
+            : null;
+
+        if ($endAt && $endAt->lte($startAt)) {
+            throw ValidationException::withMessages([
+                'end_at' => 'The end_at must be after start_at.',
+            ]);
+        }
+
+        if (($validated['type'] ?? 'sale') === 'purchase') {
+            return response()->json([
+                'data' => [
+                    'has_ongoing_promotion' => false,
+                    'has_promotion_overlap' => false,
+                    'has_conflict' => false,
+                    'can_apply_price_change' => true,
+                    'conflicts' => [],
+                    'suggested_start_at' => null,
+                ],
+            ]);
+        }
+
+        return response()->json([
+            'data' => $this->promotionConflictService->check(
+                $validated['products'],
+                $startAt,
+                $endAt
+            ),
+        ]);
     }
 
     public function runSalesPriceChangeCheck()
@@ -133,10 +264,10 @@ class PriceChangesController extends Controller
         // });
 
         $PriceChanges = PriceChange::with($this->priceChangeRelations())
-        ->when($request->filled('type'), function ($q) use ($request) {
-            $q->where('type', $request->type);
-        })
-        ->get();
+            ->when($request->filled('type'), function ($q) use ($request) {
+                $q->where('type', $request->type);
+            })
+            ->get();
 
         return PriceChangeResource::collection($PriceChanges);
     }
@@ -180,7 +311,7 @@ class PriceChangesController extends Controller
                 'end_at' => $request->end_at,
                 'status_id' => $request->status_id ?? $activeStatusId,
                 'created_by' => $request->created_by,
-                'updated_by' => $request->updated_by ?? $request->created_by
+                'updated_by' => $request->updated_by ?? $request->created_by,
             ]);
 
             // For sale type, only register target prices; actual price update is handled by scheduler/check method.
@@ -214,16 +345,25 @@ class PriceChangesController extends Controller
         return new PriceChangeResource($priceChange);
     }
 
-
     public function show(string $id)
     {
+        $this->endService->processDue();
         $price_changes = PriceChange::with($this->priceChangeRelations())->findOrFail($id);
+
         return new PriceChangeResource($price_changes);
     }
-    
+
     public function update(Request $request, string $id)
     {
         $priceChange = PriceChange::findOrFail($id);
+
+        $appliedStatusId = Status::whereRaw('LOWER(name) = ?', ['applied'])->value('id');
+
+        if ($appliedStatusId && (int) $priceChange->status_id === (int) $appliedStatusId) {
+            throw ValidationException::withMessages([
+                'price_change' => 'Applied price changes cannot be edited. Use the end workflow instead.',
+            ]);
+        }
 
         $request->validate([
             'description' => 'nullable|string',
@@ -264,7 +404,7 @@ class PriceChangesController extends Controller
                 'start_at' => $request->start_at ?? $priceChange->start_at,
                 'end_at' => $request->end_at ?? $priceChange->end_at,
                 'status_id' => $request->status_id ?? $priceChange->status_id,
-                'updated_by' => $request->updated_by
+                'updated_by' => $request->updated_by,
             ]);
 
             // Update products if provided
@@ -324,38 +464,50 @@ class PriceChangesController extends Controller
     public function destroy(Request $request, string $id)
     {
         DB::beginTransaction();
-    
+
         try {
             $priceChange = PriceChange::with($this->priceChangeRelations())->findOrFail($id);
-    
+
+            $appliedStatusId = Status::whereRaw('LOWER(name) = ?', ['applied'])->value('id');
+
+            if ($appliedStatusId && (int) $priceChange->status_id === (int) $appliedStatusId) {
+                throw ValidationException::withMessages([
+                    'price_change' => 'Applied price changes cannot be deleted. Use the end workflow instead.',
+                ]);
+            }
+
             $voidStatus = \App\Models\Status::where('name', 'void')->firstOrFail();
-    
+
             // Revert product prices before voiding
             foreach ($priceChange->products as $linkedProduct) {
                 $this->revertPriceChangeItem($priceChange, $linkedProduct);
             }
-    
+
             // Set void info
             $priceChange->status_id = $voidStatus->id;
-            $priceChange->void_at   = now();
-            $priceChange->void_by   = $request->void_by;
+            $priceChange->void_at = now();
+            $priceChange->void_by = $request->void_by;
             $priceChange->save();
-    
+
             // Optionally clear pivot table
             // $priceChange->products()->sync([]);
-    
+
             DB::commit();
-    
+
             return response()->json([
-                'message' => 'Price Change voided successfully and prices reverted.'
+                'message' => 'Price Change voided successfully and prices reverted.',
             ], 200);
-    
+
+        } catch (ValidationException $e) {
+            DB::rollBack();
+
+            throw $e;
         } catch (\Exception $e) {
             DB::rollBack();
-    
+
             return response()->json([
-                'error'   => 'Failed to void price change',
-                'details' => $e->getMessage()
+                'error' => 'Failed to void price change',
+                'details' => $e->getMessage(),
             ], 500);
         }
     }
@@ -367,6 +519,7 @@ class PriceChangesController extends Controller
             'createdBy',
             'updatedBy',
             'voidBy',
+            'endedBy',
             'products.branch',
             'products.product.unit',
             'products.product.category',
@@ -390,7 +543,7 @@ class PriceChangesController extends Controller
         $branchProduct = $this->resolveBranchProduct($item, $product);
         $productUnit = $this->resolveProductUnit($item, $product);
 
-        if (array_key_exists('min_qty', $item) && !$productUnit) {
+        if (array_key_exists('min_qty', $item) && ! $productUnit) {
             throw ValidationException::withMessages([
                 'products' => 'Price range changes require product_unit_id or a range/unit price reference.',
             ]);
@@ -463,8 +616,7 @@ class PriceChangesController extends Controller
         ?int $branchProductUnitPriceId = null,
         ?int $productUnitPriceRangeId = null,
         ?int $branchProductUnitPriceRangeId = null
-    ): string
-    {
+    ): string {
         return implode(':', [
             $branchId ?? 0,
             $productId,
@@ -485,8 +637,7 @@ class PriceChangesController extends Controller
         ?ProductUnitPriceRange $globalPriceRange,
         ?BranchProductUnitPriceRange $branchPriceRange,
         string $type
-    ): float
-    {
+    ): float {
         if ($type === 'purchase') {
             return (float) ($productUnit?->purchase_price ?? $product->purchase_price ?? 0);
         }
@@ -504,7 +655,7 @@ class PriceChangesController extends Controller
 
     private function resolveBranchProduct(array $item, Product $product): ?BranchProduct
     {
-        if (!empty($item['branch_product_id'])) {
+        if (! empty($item['branch_product_id'])) {
             $branchProduct = BranchProduct::with('branch')
                 ->lockForUpdate()
                 ->findOrFail($item['branch_product_id']);
@@ -518,7 +669,7 @@ class PriceChangesController extends Controller
             return $branchProduct;
         }
 
-        if (!empty($item['branch_product_unit_price_id'])) {
+        if (! empty($item['branch_product_unit_price_id'])) {
             $branchUnitPrice = BranchProductUnitPrice::with('branchProduct')
                 ->lockForUpdate()
                 ->findOrFail($item['branch_product_unit_price_id']);
@@ -532,7 +683,7 @@ class PriceChangesController extends Controller
             return $branchUnitPrice->branchProduct;
         }
 
-        if (!empty($item['branch_product_unit_price_range_id'])) {
+        if (! empty($item['branch_product_unit_price_range_id'])) {
             $range = BranchProductUnitPriceRange::with('branchProductUnitPrice.branchProduct')
                 ->lockForUpdate()
                 ->findOrFail($item['branch_product_unit_price_range_id']);
@@ -548,7 +699,7 @@ class PriceChangesController extends Controller
             return $branchProduct;
         }
 
-        if (!empty($item['branch_id'])) {
+        if (! empty($item['branch_id'])) {
             return BranchProduct::where('branch_id', $item['branch_id'])
                 ->where('product_id', $product->id)
                 ->lockForUpdate()
@@ -560,7 +711,7 @@ class PriceChangesController extends Controller
 
     private function resolveProductUnit(array $item, Product $product): ?ProductUnit
     {
-        if (!empty($item['product_unit_id'])) {
+        if (! empty($item['product_unit_id'])) {
             $productUnit = ProductUnit::with('unit')
                 ->lockForUpdate()
                 ->findOrFail($item['product_unit_id']);
@@ -574,7 +725,7 @@ class PriceChangesController extends Controller
             return $productUnit;
         }
 
-        if (!empty($item['branch_product_unit_price_id'])) {
+        if (! empty($item['branch_product_unit_price_id'])) {
             $branchUnitPrice = BranchProductUnitPrice::with('productUnit.unit', 'branchProduct')
                 ->lockForUpdate()
                 ->findOrFail($item['branch_product_unit_price_id']);
@@ -588,7 +739,7 @@ class PriceChangesController extends Controller
             return $branchUnitPrice->productUnit;
         }
 
-        if (!empty($item['product_unit_price_range_id'])) {
+        if (! empty($item['product_unit_price_range_id'])) {
             $range = ProductUnitPriceRange::with('productUnit.unit')
                 ->lockForUpdate()
                 ->findOrFail($item['product_unit_price_range_id']);
@@ -602,7 +753,7 @@ class PriceChangesController extends Controller
             return $range->productUnit;
         }
 
-        if (!empty($item['branch_product_unit_price_range_id'])) {
+        if (! empty($item['branch_product_unit_price_range_id'])) {
             $range = BranchProductUnitPriceRange::with('branchProductUnitPrice.productUnit.unit', 'branchProductUnitPrice.branchProduct')
                 ->lockForUpdate()
                 ->findOrFail($item['branch_product_unit_price_range_id']);
@@ -624,13 +775,13 @@ class PriceChangesController extends Controller
         ?BranchProduct $branchProduct,
         ?ProductUnit $productUnit
     ): ?BranchProductUnitPrice {
-        if (!empty($item['branch_product_unit_price_id'])) {
+        if (! empty($item['branch_product_unit_price_id'])) {
             return BranchProductUnitPrice::with('productUnit.unit', 'branchProduct')
                 ->lockForUpdate()
                 ->findOrFail($item['branch_product_unit_price_id']);
         }
 
-        if (!empty($item['branch_product_unit_price_range_id'])) {
+        if (! empty($item['branch_product_unit_price_range_id'])) {
             return BranchProductUnitPriceRange::with('branchProductUnitPrice.productUnit.unit', 'branchProductUnitPrice.branchProduct')
                 ->lockForUpdate()
                 ->findOrFail($item['branch_product_unit_price_range_id'])
@@ -649,7 +800,7 @@ class PriceChangesController extends Controller
 
     private function resolveGlobalPriceRange(array $item, ?ProductUnit $productUnit): ?ProductUnitPriceRange
     {
-        if (!empty($item['product_unit_price_range_id'])) {
+        if (! empty($item['product_unit_price_range_id'])) {
             return ProductUnitPriceRange::lockForUpdate()->findOrFail($item['product_unit_price_range_id']);
         }
 
@@ -674,7 +825,7 @@ class PriceChangesController extends Controller
         array $item,
         ?BranchProductUnitPrice $branchUnitPrice
     ): ?BranchProductUnitPriceRange {
-        if (!empty($item['branch_product_unit_price_range_id'])) {
+        if (! empty($item['branch_product_unit_price_range_id'])) {
             return BranchProductUnitPriceRange::lockForUpdate()->findOrFail($item['branch_product_unit_price_range_id']);
         }
 
@@ -734,7 +885,7 @@ class PriceChangesController extends Controller
                 return false;
             }
 
-            $range->old_price = $linkedProduct->old_price;
+            $range->old_price ??= $linkedProduct->old_price;
             $range->price = $newSalePrice;
             $range->save();
 
@@ -751,14 +902,14 @@ class PriceChangesController extends Controller
             return true;
         }
 
-        if (!$linkedProduct->branch_id && $linkedProduct->product_unit_id && $linkedProduct->min_qty !== null) {
+        if (! $linkedProduct->branch_id && $linkedProduct->product_unit_id && $linkedProduct->min_qty !== null) {
             $range = $this->ensureGlobalPriceRange($linkedProduct);
 
             if ((float) $range->price === $newSalePrice) {
                 return false;
             }
 
-            $range->old_price = $linkedProduct->old_price;
+            $range->old_price ??= $linkedProduct->old_price;
             $range->price = $newSalePrice;
             $range->save();
 
@@ -774,7 +925,7 @@ class PriceChangesController extends Controller
                 return false;
             }
 
-            $branchUnitPrice->old_price = $linkedProduct->old_price;
+            $branchUnitPrice->old_price ??= $linkedProduct->old_price;
             $branchUnitPrice->price = $newSalePrice;
             $branchUnitPrice->save();
 
@@ -790,7 +941,7 @@ class PriceChangesController extends Controller
                 return false;
             }
 
-            $branchProduct->old_price = $linkedProduct->old_price;
+            $branchProduct->old_price ??= $linkedProduct->old_price;
             $branchProduct->price = $newSalePrice;
             $branchProduct->save();
 
@@ -866,7 +1017,7 @@ class PriceChangesController extends Controller
             'product_id' => $linkedProduct->product_id,
         ]);
 
-        if (!$branchProduct->exists) {
+        if (! $branchProduct->exists) {
             $branchProduct->price = $linkedProduct->old_price;
             $branchProduct->old_price = $linkedProduct->old_price;
         }
@@ -892,7 +1043,7 @@ class PriceChangesController extends Controller
             'product_unit_id' => $productUnit->id,
         ]);
 
-        if (!$branchUnitPrice->exists) {
+        if (! $branchUnitPrice->exists) {
             $branchUnitPrice->unit_id = $productUnit->unit_id;
             $branchUnitPrice->unit_name = $productUnit->unit->name ?? $linkedProduct->unit_name;
             $branchUnitPrice->conversion_to_base = $productUnit->conversion_to_base;
@@ -920,7 +1071,7 @@ class PriceChangesController extends Controller
             'max_qty' => $linkedProduct->max_qty,
         ]);
 
-        if (!$range->exists) {
+        if (! $range->exists) {
             $range->price = $linkedProduct->old_price;
             $range->old_price = $linkedProduct->old_price;
             $range->status_id = $productUnit->status_id;
@@ -948,7 +1099,7 @@ class PriceChangesController extends Controller
             'max_qty' => $linkedProduct->max_qty,
         ]);
 
-        if (!$range->exists) {
+        if (! $range->exists) {
             $range->price = $linkedProduct->old_price;
             $range->old_price = $linkedProduct->old_price;
             $range->status_id = $branchUnitPrice->status_id;
@@ -1042,5 +1193,4 @@ class PriceChangesController extends Controller
 
         $product->save();
     }
-     
 }

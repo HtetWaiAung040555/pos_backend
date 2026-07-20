@@ -12,14 +12,46 @@ class PriceChangeResource extends JsonResource
 
     public function toArray(Request $request): array
     {
+        $now = now();
+        $statusName = strtolower((string) $this->status?->name);
+        $started = ! $this->start_at || $this->start_at->lte($now);
+        $pastEnd = $this->end_at && $this->end_at->lte($now);
+        $ended = $statusName === 'ended' || $this->ended_at || $this->void_at || $pastEnd;
+
+        if ($ended) {
+            $effectiveState = 'ended';
+        } elseif (! $started || $statusName !== 'applied') {
+            $effectiveState = 'scheduled';
+        } elseif ($this->ended_by && $this->end_at?->gt($now)) {
+            $effectiveState = 'ending_scheduled';
+        } else {
+            $effectiveState = 'ongoing';
+        }
+
+        $canEnd = $this->type === 'sale'
+            && $statusName === 'applied'
+            && $started
+            && ! $pastEnd
+            && ! $this->void_at
+            && ! $this->ended_at
+            && ! $this->ended_by;
+
         $data = [
             'id' => $this->id,
             'description' => $this->description,
             'type' => $this->type,
             'start_at' => $this->toLocalDateTime($this->start_at),
             'end_at' => $this->toLocalDateTime($this->end_at),
+            'ended_at' => $this->toLocalDateTime($this->ended_at),
+            'ended_by' => $this->endedBy ? [
+                'id' => $this->endedBy->id,
+                'name' => $this->endedBy->name,
+            ] : null,
+            'end_reason' => $this->end_reason,
+            'can_end' => $canEnd,
+            'effective_state' => $effectiveState,
             'status' => $this->status ? [
-                'id'   => $this->status->id,
+                'id' => $this->status->id,
                 'name' => $this->status->name,
             ] : null,
             'products' => PriceChangeProductResource::collection($this->whenLoaded('products')),
@@ -64,9 +96,7 @@ class PriceChangeResource extends JsonResource
         //     });
         // }
 
-        $data['active'] = $this->start_at && $this->end_at && !$this->void_at
-            ? now()->between($this->start_at, $this->end_at)
-            : false;
+        $data['active'] = in_array($effectiveState, ['ongoing', 'ending_scheduled'], true);
 
         return $data;
     }

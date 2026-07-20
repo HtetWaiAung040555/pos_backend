@@ -1348,6 +1348,7 @@ class SaleController extends Controller
 
         if (empty($cart)) {
             return [
+                'priced_items' => [],
                 'items' => [],
                 'order' => [
                     'total_discount' => 0,
@@ -1356,6 +1357,7 @@ class SaleController extends Controller
                     'applied_promotions' => [],
                 ],
                 'foc_items' => [],
+                'promotion_warnings' => [],
             ];
         }
 
@@ -1374,12 +1376,14 @@ class SaleController extends Controller
         }
 
         return json_decode($response->getContent(), true) ?: [
+            'priced_items' => [],
             'items' => [],
             'order' => [
                 'total_discount' => 0,
                 'applied_promotions' => [],
             ],
             'foc_items' => [],
+            'promotion_warnings' => [],
         ];
     }
 
@@ -1390,50 +1394,91 @@ class SaleController extends Controller
             ->groupBy('line_key')
             ->map(fn ($items) => $items->last());
 
-        $discountsByProduct = collect($promotionResult['items'] ?? [])
-            ->filter(fn ($item) => array_key_exists('discount_price', $item))
-            ->groupBy(fn ($item) => (int) ($item['product_id'] ?? 0))
-            ->map(fn ($items) => $items->last());
+        $regularProducts = collect($request->products ?? [])
+            ->reject(fn ($item) => ! empty($item['is_foc']))
+            ->values();
+        $focProducts = collect($request->products ?? [])
+            ->filter(fn ($item) => ! empty($item['is_foc']))
+            ->values();
+        $productsBySourceLine = $regularProducts->mapWithKeys(
+            fn ($item, $index) => [$this->saleItemPromotionKey($item, $index) => $item]
+        );
+        $pricedItems = collect($promotionResult['priced_items'] ?? []);
 
-        $products = collect($request->products ?? [])
-            ->values()
-            ->map(function ($item, $index) use ($discountsByLine, $discountsByProduct) {
-                if (!empty($item['is_foc'])) {
-                    return $item;
-                }
+        $applyDiscount = function (array $item, $discount): array {
+            if (! $discount) {
+                unset(
+                    $item['promotion_id'],
+                    $item['promo_type'],
+                    $item['discount_type'],
+                    $item['discount_value'],
+                    $item['discount_price']
+                );
 
-                $lineKey = $this->saleItemPromotionKey($item, $index);
-                $discount = $discountsByLine[$lineKey]
-                    ?? $discountsByProduct[(int) ($item['product_id'] ?? 0)]
-                    ?? null;
-
-                if (!$discount) {
-                    unset(
-                        $item['promotion_id'],
-                        $item['promo_type'],
-                        $item['discount_type'],
-                        $item['discount_value'],
-                        $item['discount_price']
-                    );
-
-                    $item['discount_amount'] = 0;
-
-                    return $item;
-                }
-
-                $originalPrice = (float) ($item['original_price'] ?? $item['price'] ?? 0);
-                $discountPrice = (float) $discount['discount_price'];
-
-                $item['promotion_id'] = (int) $discount['promotion_id'];
-                $item['promo_type'] = $discount['promo_type'] ?? null;
-                $item['discount_type'] = $discount['discount_type'] ?? null;
-                $item['discount_value'] = isset($discount['discount_value']) ? (float) $discount['discount_value'] : null;
-                $item['discount_price'] = $discountPrice;
-                $item['discount_amount'] = max(0, $originalPrice - $discountPrice);
+                $item['discount_amount'] = 0;
 
                 return $item;
-            })
-            ->all();
+            }
+
+            $originalPrice = (float) ($item['original_price'] ?? $item['price'] ?? 0);
+            $discountPrice = (float) $discount['discount_price'];
+
+            $item['promotion_id'] = (int) $discount['promotion_id'];
+            $item['promo_type'] = $discount['promo_type'] ?? null;
+            $item['discount_type'] = $discount['discount_type'] ?? null;
+            $item['discount_value'] = isset($discount['discount_value'])
+                ? (float) $discount['discount_value']
+                : null;
+            $item['discount_price'] = $discountPrice;
+            $item['discount_amount'] = max(0, $originalPrice - $discountPrice);
+
+            return $item;
+        };
+
+        if ($pricedItems->isNotEmpty()) {
+            $products = $pricedItems
+                ->map(function ($pricedItem) use ($productsBySourceLine, $discountsByLine, $applyDiscount) {
+                    $sourceLineKey = $pricedItem['source_line_key'] ?? $pricedItem['line_key'] ?? null;
+                    $item = $sourceLineKey ? $productsBySourceLine->get($sourceLineKey) : null;
+
+                    if (! $item) {
+                        return null;
+                    }
+
+                    $quantity = (float) ($pricedItem['qty'] ?? 0);
+
+                    if ($quantity <= 0 || abs($quantity - round($quantity)) > 0.000001) {
+                        throw ValidationException::withMessages([
+                            'products' => 'Promotion quantity allocation must produce positive whole-number sales quantities.',
+                        ]);
+                    }
+
+                    $uomSnapshot = $this->saleDetailUomSnapshot($item, $quantity);
+                    $item = array_merge($item, $uomSnapshot);
+                    $item['quantity'] = (int) round($quantity);
+                    $item['price'] = (float) ($pricedItem['price'] ?? $item['price'] ?? 0);
+                    $item['original_price'] = (float) ($pricedItem['original_price'] ?? $item['price']);
+
+                    $lineKey = $pricedItem['line_key'] ?? null;
+                    $discount = $lineKey ? ($discountsByLine[$lineKey] ?? null) : null;
+
+                    return $applyDiscount($item, $discount);
+                })
+                ->filter()
+                ->concat($focProducts)
+                ->values()
+                ->all();
+        } else {
+            $products = $regularProducts
+                ->map(function ($item, $index) use ($discountsByLine, $applyDiscount) {
+                    $lineKey = $this->saleItemPromotionKey($item, $index);
+
+                    return $applyDiscount($item, $discountsByLine[$lineKey] ?? null);
+                })
+                ->concat($focProducts)
+                ->values()
+                ->all();
+        }
 
         $request->merge([
             'products' => $products,

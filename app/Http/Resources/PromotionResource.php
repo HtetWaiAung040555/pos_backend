@@ -27,7 +27,7 @@ class PromotionResource extends JsonResource
             'start_at' => $this->toLocalDateTime($this->start_at),
             'end_at' => $this->toLocalDateTime($this->end_at),
             'status' => $this->status ? [
-                'id'   => $this->status->id,
+                'id' => $this->status->id,
                 'name' => $this->status->name,
             ] : null,
             'void_at' => $this->toLocalDateTime($this->void_at),
@@ -53,10 +53,25 @@ class PromotionResource extends JsonResource
 
         if ($this->relationLoaded('focAllocations')) {
             $data['foc_allocations'] = $this->focAllocations->map(function ($allocation) {
+                $allocatedBaseQty = (float) ($allocation->allocated_base_qty ?? $allocation->allocated_qty ?? 0);
+                $usedBaseQty = (float) ($allocation->used_base_qty ?? $allocation->used_qty ?? 0);
+
                 return [
                     'id' => $allocation->id,
                     'promotion_id' => $allocation->promotion_id,
+                    'branch_id' => $allocation->branch_id,
+                    'branch' => $allocation->relationLoaded('branch') && $allocation->branch ? [
+                        'id' => $allocation->branch->id,
+                        'name' => $allocation->branch->name,
+                    ] : null,
+                    'allocated_warehouse_id' => $allocation->allocated_warehouse_id,
+                    'warehouse' => $allocation->relationLoaded('warehouse') && $allocation->warehouse ? [
+                        'id' => $allocation->warehouse->id,
+                        'name' => $allocation->warehouse->name,
+                    ] : null,
                     'product_id' => $allocation->product_id,
+                    'product_unit_id' => $allocation->product_unit_id,
+                    'unit_id' => $allocation->unit_id,
                     'uom' => [
                         'product_unit_id' => $allocation->product_unit_id,
                         'unit_id' => $allocation->unit_id,
@@ -73,9 +88,11 @@ class PromotionResource extends JsonResource
                         'price' => $allocation->product->price,
                     ] : null,
                     'allocated_qty' => (int) $allocation->allocated_qty,
+                    'allocated_base_qty' => $allocatedBaseQty,
                     'used_qty' => (int) $allocation->used_qty,
+                    'used_base_qty' => $usedBaseQty,
                     'remaining_qty' => max(0, (int) $allocation->allocated_qty - (int) $allocation->used_qty),
-                    'allocated_warehouse_id' => $allocation->allocated_warehouse_id,
+                    'remaining_base_qty' => max(0, $allocatedBaseQty - $usedBaseQty),
                 ];
             })->values();
         }
@@ -83,17 +100,20 @@ class PromotionResource extends JsonResource
         if ($this->relationLoaded('products')) {
             $data['products'] = $this->products->map(function ($product) {
                 return [
-                    'id'    => $product->id,
-                    'name'  => $product->name,
-                    'unit'  => $product->unit,
+                    'id' => $product->id,
+                    'name' => $product->name,
+                    'unit' => $product->unit,
                     'sec_prop' => $product->sec_prop,
                     'price' => $product->price,
                     'barcode' => $product->barcode,
                     'promotion_product_unit_id' => $product->pivot->product_unit_id ?? null,
                     'promotion_unit_id' => $product->pivot->unit_id ?? null,
+                    'max_qty_per_sales_order' => $product->pivot->max_qty_per_sales_order !== null
+                        ? (float) $product->pivot->max_qty_per_sales_order
+                        : null,
                     'image_url' => $product->image ? url($product->image) : url('assets/img/products/default.png'),
                     'status' => $product->status ? [
-                        'id'   => $product->status->id,
+                        'id' => $product->status->id,
                         'name' => $product->status->name,
                     ] : null,
                     'category' => $product->category ? [
