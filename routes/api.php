@@ -5,26 +5,26 @@ use App\Http\Controllers\Api\BranchesController;
 use App\Http\Controllers\Api\CategoriesController;
 use App\Http\Controllers\Api\CountersController;
 use App\Http\Controllers\Api\CustomersController;
+use App\Http\Controllers\Api\CustomerTransactionController;
+use App\Http\Controllers\Api\DashboardController;
 use App\Http\Controllers\Api\InventoriesController;
 use App\Http\Controllers\Api\PaymentMethodController;
 use App\Http\Controllers\Api\PermissionsController;
-use App\Http\Controllers\Api\ProductsController;
-use App\Http\Controllers\Api\RolesController;
-use App\Http\Controllers\Api\SaleController;
-use App\Http\Controllers\Api\UsersController;
-use App\Http\Controllers\Api\StatusesController;
-use App\Http\Controllers\Api\WarehousesController;
-use App\Http\Controllers\Api\CustomerTransactionController;
-use App\Http\Controllers\Api\DashboardController;
 use App\Http\Controllers\Api\PriceChangesController;
+use App\Http\Controllers\Api\ProductsController;
 use App\Http\Controllers\Api\PromotionsController;
 use App\Http\Controllers\Api\PurchaseReturnController;
 use App\Http\Controllers\Api\PurchasesController;
+use App\Http\Controllers\Api\RolesController;
+use App\Http\Controllers\Api\SaleController;
 use App\Http\Controllers\Api\SaleReturnController;
+use App\Http\Controllers\Api\StatusesController;
 use App\Http\Controllers\Api\StockTransactionController;
 use App\Http\Controllers\Api\SuppliersController;
 use App\Http\Controllers\Api\UnitsController;
+use App\Http\Controllers\Api\UsersController;
 use App\Http\Controllers\Api\WalletsTopUpController;
+use App\Http\Controllers\Api\WarehousesController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
@@ -41,7 +41,7 @@ Route::middleware(['auth:sanctum'])->group(function () {
     Route::get('/users', [UsersController::class, 'index']);
     Route::get('/users/{id}', [UsersController::class, 'show']);
     Route::post('/users', [UsersController::class, 'store']);
-    
+
     Route::delete('/users/{id}', [UsersController::class, 'destroy']);
 
     Route::apiResource('/roles', RolesController::class);
@@ -61,7 +61,7 @@ Route::middleware(['auth:sanctum'])->group(function () {
 
     Route::get('/dashboard/summary', [DashboardController::class, 'summary']);
     Route::get('/dashboard/dailysales', [DashboardController::class, 'dailySales']);
-    Route::get('/dashboard/weeklysales',[DashboardController::class, 'weeklySales']);
+    Route::get('/dashboard/weeklysales', [DashboardController::class, 'weeklySales']);
     Route::get('/dashboard/monthlysales', [DashboardController::class, 'monthlySales']);
     Route::get('/dashboard/yearlysales', [DashboardController::class, 'yearlySales']);
     Route::get('/dashboard/paymentmethods', [DashboardController::class, 'paymentMethods']);
@@ -93,6 +93,7 @@ Route::middleware(['auth:sanctum'])->group(function () {
     Route::delete('/stock_transactions/{id}', [StockTransactionController::class, 'destroy']);
 
     // Route::get('/inventories/saleproducts', [InventoriesController::class, 'saleproducts']);
+    Route::post('/inventory/foc-availability', [InventoriesController::class, 'focAvailability']);
     Route::post('/inventories/adjust', [InventoriesController::class, 'adjust']);
     Route::apiResource('/inventories', InventoriesController::class);
 
@@ -114,13 +115,15 @@ Route::middleware(['auth:sanctum'])->group(function () {
     Route::get('/sales/dashboard', [SaleController::class, 'dashboard']);
     Route::apiResource('/sales', SaleController::class);
 
-    Route::apiResource('/sale_returns',SaleReturnController::class);
+    Route::apiResource('/sale_returns', SaleReturnController::class);
 
     Route::apiResource('/payment_methods', PaymentMethodController::class);
 
     Route::apiResource('/customers_transactions', CustomerTransactionController::class);
 
     Route::post('/pricechanges/check_sales_price', [PriceChangesController::class, 'runSalesPriceChangeCheck']);
+    Route::post('/pricechanges/check-promotion-conflicts', [PriceChangesController::class, 'checkPromotionConflicts']);
+    Route::post('/pricechanges/{id}/end', [PriceChangesController::class, 'end']);
     Route::apiResource('/pricechanges', PriceChangesController::class);
 
     Route::post('/promotions/checkprice', [PromotionsController::class, 'checkPrice']);

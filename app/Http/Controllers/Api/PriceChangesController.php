@@ -552,6 +552,13 @@ class PriceChangesController extends Controller
         $branchUnitPrice = $this->resolveBranchUnitPrice($item, $branchProduct, $productUnit);
         $globalPriceRange = $this->resolveGlobalPriceRange($item, $productUnit);
         $branchPriceRange = $this->resolveBranchPriceRange($item, $branchUnitPrice);
+        $requestedBranchId = ! empty($item['branch_id']) ? (int) $item['branch_id'] : null;
+
+        if ($branchProduct && $requestedBranchId && (int) $branchProduct->branch_id !== $requestedBranchId) {
+            throw ValidationException::withMessages([
+                'products' => "Branch product {$branchProduct->id} does not belong to branch {$requestedBranchId}.",
+            ]);
+        }
 
         $newPrice = (float) $item['new_price'];
 
@@ -562,7 +569,8 @@ class PriceChangesController extends Controller
             'branch_unit_price' => $branchUnitPrice,
             'product_unit_price_range' => $globalPriceRange,
             'branch_price_range' => $branchPriceRange,
-            'branch_id' => $branchProduct?->branch_id,
+            'branch_id' => $branchProduct?->branch_id
+                ?? ($type === 'sale' ? $requestedBranchId : null),
             'branch_product_id' => $branchProduct?->id,
             'product_id' => (int) $product->id,
             'product_unit_id' => $productUnit?->id,
@@ -881,14 +889,6 @@ class PriceChangesController extends Controller
         if ($linkedProduct->branch_id && $linkedProduct->product_unit_id && $linkedProduct->min_qty !== null) {
             $range = $this->ensureBranchPriceRange($linkedProduct);
 
-            if ((float) $range->price === $newSalePrice) {
-                return false;
-            }
-
-            $range->old_price ??= $linkedProduct->old_price;
-            $range->price = $newSalePrice;
-            $range->save();
-
             $range->loadMissing('branchProductUnitPrice.branchProduct');
 
             $this->syncAppliedTargetIds(
@@ -898,6 +898,14 @@ class PriceChangesController extends Controller
                 null,
                 $range
             );
+
+            if ((float) $range->price === $newSalePrice) {
+                return false;
+            }
+
+            $range->old_price ??= $linkedProduct->old_price;
+            $range->price = $newSalePrice;
+            $range->save();
 
             return true;
         }
@@ -921,6 +929,8 @@ class PriceChangesController extends Controller
         if ($linkedProduct->branch_id && $linkedProduct->product_unit_id) {
             $branchUnitPrice = $this->ensureBranchUnitPrice($linkedProduct);
 
+            $this->syncAppliedTargetIds($linkedProduct, $branchUnitPrice->branchProduct, $branchUnitPrice, null, null);
+
             if ((float) $branchUnitPrice->price === $newSalePrice) {
                 return false;
             }
@@ -929,13 +939,13 @@ class PriceChangesController extends Controller
             $branchUnitPrice->price = $newSalePrice;
             $branchUnitPrice->save();
 
-            $this->syncAppliedTargetIds($linkedProduct, $branchUnitPrice->branchProduct, $branchUnitPrice, null, null);
-
             return true;
         }
 
         if ($linkedProduct->branch_id) {
             $branchProduct = $this->ensureBranchProduct($linkedProduct);
+
+            $this->syncAppliedTargetIds($linkedProduct, $branchProduct, null, null, null);
 
             if ((float) $branchProduct->price === $newSalePrice) {
                 return false;
@@ -944,8 +954,6 @@ class PriceChangesController extends Controller
             $branchProduct->old_price ??= $linkedProduct->old_price;
             $branchProduct->price = $newSalePrice;
             $branchProduct->save();
-
-            $this->syncAppliedTargetIds($linkedProduct, $branchProduct, null, null, null);
 
             return true;
         }
@@ -1012,19 +1020,30 @@ class PriceChangesController extends Controller
             return BranchProduct::lockForUpdate()->findOrFail($linkedProduct->branch_product_id);
         }
 
-        $branchProduct = BranchProduct::firstOrNew([
-            'branch_id' => $linkedProduct->branch_id,
-            'product_id' => $linkedProduct->product_id,
-        ]);
+        $product = Product::lockForUpdate()->findOrFail($linkedProduct->product_id);
+        $branchProduct = BranchProduct::query()
+            ->where('branch_id', $linkedProduct->branch_id)
+            ->where('product_id', $linkedProduct->product_id)
+            ->lockForUpdate()
+            ->first();
 
-        if (! $branchProduct->exists) {
-            $branchProduct->price = $linkedProduct->old_price;
-            $branchProduct->old_price = $linkedProduct->old_price;
+        if ($branchProduct) {
+            return $branchProduct;
         }
 
-        $branchProduct->save();
+        $actorId = $linkedProduct->priceChange()->value('created_by')
+            ?? $product->updated_by
+            ?? $product->created_by;
 
-        return $branchProduct;
+        return BranchProduct::create([
+            'branch_id' => $linkedProduct->branch_id,
+            'product_id' => $linkedProduct->product_id,
+            'price' => $product->price,
+            'old_price' => $product->price,
+            'status_id' => $product->status_id,
+            'created_by' => $actorId,
+            'updated_by' => $actorId,
+        ]);
     }
 
     private function ensureBranchUnitPrice(PriceChangeProduct $linkedProduct): BranchProductUnitPrice
@@ -1036,25 +1055,32 @@ class PriceChangesController extends Controller
         }
 
         $branchProduct = $this->ensureBranchProduct($linkedProduct);
-        $productUnit = ProductUnit::with('unit')->findOrFail($linkedProduct->product_unit_id);
+        $productUnit = ProductUnit::with('unit')
+            ->lockForUpdate()
+            ->findOrFail($linkedProduct->product_unit_id);
 
-        $branchUnitPrice = BranchProductUnitPrice::firstOrNew([
-            'branch_product_id' => $branchProduct->id,
-            'product_unit_id' => $productUnit->id,
-        ]);
+        $branchUnitPrice = BranchProductUnitPrice::with('branchProduct')
+            ->where('branch_product_id', $branchProduct->id)
+            ->where('product_unit_id', $productUnit->id)
+            ->lockForUpdate()
+            ->first();
 
-        if (! $branchUnitPrice->exists) {
-            $branchUnitPrice->unit_id = $productUnit->unit_id;
-            $branchUnitPrice->unit_name = $productUnit->unit->name ?? $linkedProduct->unit_name;
-            $branchUnitPrice->conversion_to_base = $productUnit->conversion_to_base;
-            $branchUnitPrice->price = $linkedProduct->old_price;
-            $branchUnitPrice->old_price = $linkedProduct->old_price;
-            $branchUnitPrice->status_id = $branchProduct->status_id;
+        if ($branchUnitPrice) {
+            return $branchUnitPrice;
         }
 
-        $branchUnitPrice->save();
-
-        return $branchUnitPrice;
+        return BranchProductUnitPrice::create([
+            'branch_product_id' => $branchProduct->id,
+            'product_unit_id' => $productUnit->id,
+            'unit_id' => $productUnit->unit_id,
+            'unit_name' => $productUnit->unit->name ?? $linkedProduct->unit_name,
+            'conversion_to_base' => $productUnit->conversion_to_base,
+            'price' => $productUnit->price,
+            'old_price' => $productUnit->price,
+            'status_id' => $branchProduct->status_id,
+            'created_by' => $branchProduct->created_by,
+            'updated_by' => $branchProduct->updated_by,
+        ])->load('branchProduct');
     }
 
     private function ensureGlobalPriceRange(PriceChangeProduct $linkedProduct): ProductUnitPriceRange

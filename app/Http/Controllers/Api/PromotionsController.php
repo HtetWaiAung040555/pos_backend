@@ -290,6 +290,10 @@ class PromotionsController extends Controller
                         $validated['foc_allocations'] ?? [],
                         $targetBranchIds
                     );
+
+                    if ((int) $promotion->status_id === $this->statusIdByName('inactive')) {
+                        $this->closePromotionFocAllocations($promotion);
+                    }
                 }
 
                 return $promotion;
@@ -573,6 +577,7 @@ class PromotionsController extends Controller
                 ?? 'NONE';
             $targetStartAt = $validated['start_at'] ?? $promotion->start_at;
             $targetEndAt = $validated['end_at'] ?? $promotion->end_at;
+            $targetStatusId = $this->promotionLifecycleStatusId($targetStartAt, $targetEndAt);
 
             $promotion->update([
                 'name' => $validated['name'] ?? $promotion->name,
@@ -586,7 +591,7 @@ class PromotionsController extends Controller
                 'override_price' => $validated['override_price'] ?? $promotion->override_price,
                 'branch_scope_type' => $branchScopeType,
                 'warehouse_scope_type' => $warehouseScopeType,
-                'status_id' => $this->promotionLifecycleStatusId($targetStartAt, $targetEndAt),
+                'status_id' => $targetStatusId,
                 'start_at' => $targetStartAt,
                 'end_at' => $targetEndAt,
                 'updated_by' => $validated['updated_by'] ?? $promotion->updated_by,
@@ -625,6 +630,13 @@ class PromotionsController extends Controller
                     $validated['foc_allocations'] ?? [],
                     $targetBranchIds
                 );
+            }
+
+            if (
+                $promotion->promo_type === 'FOC'
+                && (int) $targetStatusId === (int) $inactiveStatusId
+            ) {
+                $this->closePromotionFocAllocations($promotion);
             }
 
             DB::commit();
@@ -2110,51 +2122,60 @@ class PromotionsController extends Controller
         return (int) $statusId;
     }
 
-    private function refreshPromotionLifecycleStatuses(): void
+    public function refreshPromotionLifecycleStatuses(): array
     {
         $now = now();
         $activeStatusId = $this->statusIdByName('active');
         $appliedStatusId = $this->statusIdByName('applied');
         $inactiveStatusId = $this->statusIdByName('inactive');
 
-        DB::transaction(function () use ($now, $activeStatusId, $appliedStatusId, $inactiveStatusId) {
-            Promotion::whereNull('void_at')
+        return DB::transaction(function () use ($now, $activeStatusId, $appliedStatusId, $inactiveStatusId) {
+            $scheduledPromotions = Promotion::whereNull('void_at')
                 ->where('start_at', '>', $now)
                 ->where('status_id', '!=', $activeStatusId)
                 ->update(['status_id' => $activeStatusId]);
 
-            Promotion::whereNull('void_at')
+            $appliedPromotions = Promotion::whereNull('void_at')
                 ->where('start_at', '<=', $now)
                 ->where('end_at', '>=', $now)
                 ->where('status_id', '!=', $appliedStatusId)
                 ->update(['status_id' => $appliedStatusId]);
 
-            $expiredPromoIds = Promotion::whereNull('void_at')
+            $expiredPromotions = Promotion::with('focAllocations')
+                ->whereNull('void_at')
                 ->where('end_at', '<', $now)
-                ->where('status_id', '!=', $inactiveStatusId)
+                ->where(function ($query) use ($inactiveStatusId) {
+                    $query->where('status_id', '!=', $inactiveStatusId)
+                        ->orWhereHas('focAllocations', function ($allocationQuery) {
+                            $allocationQuery->whereRaw(
+                                'COALESCE(allocated_base_qty, allocated_qty, 0) > COALESCE(used_base_qty, used_qty, 0)'
+                            );
+                        });
+                })
+                ->orderBy('id')
                 ->lockForUpdate()
-                ->pluck('id');
+                ->get();
 
-            if ($expiredPromoIds->isNotEmpty()) {
-                $expiredPromotions = Promotion::with('focAllocations')
-                    ->whereIn('id', $expiredPromoIds)
-                    ->get();
-
-                foreach ($expiredPromotions as $promotion) {
-                    if ($promotion->promo_type !== 'FOC') {
-                        continue;
-                    }
-
+            foreach ($expiredPromotions as $promotion) {
+                if ($promotion->promo_type === 'FOC') {
                     $this->closePromotionFocAllocations($promotion);
                 }
+
+                $promotion->update(['status_id' => $inactiveStatusId]);
             }
 
-            Promotion::whereNull('void_at')
-                ->where('end_at', '<', $now)
-                ->where('status_id', '!=', $inactiveStatusId)
-                ->update(['status_id' => $inactiveStatusId]);
+            Log::info('Promotion lifecycle statuses refreshed', [
+                'scheduled_promotions' => $scheduledPromotions,
+                'applied_promotions' => $appliedPromotions,
+                'expired_promotion_ids' => $expiredPromotions->pluck('id')->all(),
+            ]);
 
-            Log::info('expiredPromo IDs: '.$expiredPromoIds->implode(','));
+            return [
+                'scheduled_promotions' => $scheduledPromotions,
+                'applied_promotions' => $appliedPromotions,
+                'expired_promotions' => $expiredPromotions->count(),
+                'checked_at' => $now->toDateTimeString(),
+            ];
         });
     }
 

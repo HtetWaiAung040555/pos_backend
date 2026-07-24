@@ -7,6 +7,7 @@ use App\Http\Resources\SaleResource;
 use App\Models\Branch;
 use App\Models\Inventory;
 use App\Models\Product;
+use App\Models\ProductUnit;
 use App\Models\Promotion;
 use App\Models\Sale;
 use App\Models\SaleDetail;
@@ -103,6 +104,8 @@ class SaleController extends Controller
                 $this->applySellingPricesToSaleRequest($request);
             }
 
+            $this->normalizeSaleItemUomRequest($request);
+
             $promotionResult = $isSync
                 ? $this->submittedPromotionResult($request)
                 : $this->resolvePromotionResult($request);
@@ -110,6 +113,7 @@ class SaleController extends Controller
             if (!$isSync) {
                 $this->validateSubmittedPromotionResult($request, $promotionResult);
                 $this->applyPromotionResultToSaleRequest($request, $promotionResult);
+                $this->normalizeSaleItemUomRequest($request);
             }
 
             $productIds = collect($request->products)
@@ -168,9 +172,10 @@ class SaleController extends Controller
             foreach ($request->products as $item) {
 
                 $product = $products[$item['product_id']];
-                $remainingQty = $item['quantity'];
-
                 $isFoc = !empty($item['is_foc']);
+                $remainingQty = $isFoc
+                    ? (int) $item['quantity']
+                    : (int) $item['base_quantity'];
                 $rewardId = !empty($item['reward_id']) ? (int) $item['reward_id'] : null;
                 $unitPrice = $isFoc ? 0 : $item['price'];
                 $discountPrice = $isFoc ? 0 : ($item['discount_price'] ?? 0);
@@ -397,12 +402,12 @@ class SaleController extends Controller
                         'promotion_id' => $item['promotion_id'] ?? null,
                         'is_foc' => $isFoc,
                         'reward_id' => $item['reward_id'] ?? null,
-                        'total' => $price * $deductQty,
+                        'total' => $price * $this->unitQuantityFromBase($item, $deductQty),
                         'created_at' => now(),
                         'updated_at' => now()
-                    ], $this->saleDetailUomSnapshot($item, $deductQty));
+                    ], $this->saleDetailUomSnapshotFromBase($item, $deductQty));
 
-                    $stockTransactions[] = [
+                    $stockTransactions[] = array_merge([
                         'inventory_id' => $inventory->id,
                         'reference_id' => $sale->id,
                         'reference_type' => 'sale',
@@ -412,7 +417,7 @@ class SaleController extends Controller
                         'created_by' => $createdBy,
                         'created_at' => now(),
                         'updated_at' => now()
-                    ];
+                    ], $this->stockTransactionUomSnapshotFromBase($item, $deductQty));
 
                     $remainingQty -= $deductQty;
                 }
@@ -452,12 +457,12 @@ class SaleController extends Controller
                             'is_foc' => false,
 
                             'reward_id' => null,
-                            'total' => $price * $deductQty,
+                            'total' => $price * $this->unitQuantityFromBase($item, $deductQty),
                             'created_at' => now(),
                             'updated_at' => now()
-                        ], $this->saleDetailUomSnapshot($item, $deductQty));
+                        ], $this->saleDetailUomSnapshotFromBase($item, $deductQty));
 
-                        $stockTransactions[] = [
+                        $stockTransactions[] = array_merge([
                             'inventory_id' => $inventory->id,
                             'reference_id' => $sale->id,
                             'reference_type' => 'sale',
@@ -467,7 +472,7 @@ class SaleController extends Controller
                             'created_by' => $createdBy,
                             'created_at' => now(),
                             'updated_at' => now()
-                        ];
+                        ], $this->stockTransactionUomSnapshotFromBase($item, $deductQty));
 
                         $remainingQty -= $deductQty;
                     }
@@ -504,12 +509,12 @@ class SaleController extends Controller
                         'promotion_id' => $item['promotion_id'] ?? null,
                         'is_foc' => $isFoc,
                         'reward_id' => $item['reward_id'] ?? null,
-                        'total' => $price * $remainingQty,
+                        'total' => $price * $this->unitQuantityFromBase($item, $remainingQty),
                         'created_at' => now(),
                         'updated_at' => now()
-                    ], $this->saleDetailUomSnapshot($item, $remainingQty));
+                    ], $this->saleDetailUomSnapshotFromBase($item, $remainingQty));
 
-                    $stockTransactions[] = [
+                    $stockTransactions[] = array_merge([
                         'inventory_id' => $negativeInventory->id,
                         'reference_id' => $sale->id,
                         'reference_type' => 'sale',
@@ -519,12 +524,12 @@ class SaleController extends Controller
                         'created_by' => $createdBy,
                         'updated_at' => now(),
                         'created_at' => now()
-                    ];
+                    ], $this->stockTransactionUomSnapshotFromBase($item, $remainingQty));
                 }
             }
 
             SaleDetail::insert($saleDetails);
-            StockTransaction::insert($stockTransactions);
+            $this->insertSaleStockTransactions($stockTransactions);
             $this->createSalePromotionSnapshots($sale, $promotionResult);
 
             /* Customer Ledger (Only Completed Sales) */
@@ -668,6 +673,10 @@ class SaleController extends Controller
                 $this->applySellingPricesToSaleRequest($request, $warehouseId);
             }
 
+            if ($request->has('products')) {
+                $this->normalizeSaleItemUomRequest($request);
+            }
+
             /* Recalculate New Total */
 
             $totalAmount = 0;
@@ -729,6 +738,7 @@ class SaleController extends Controller
                 if (!$isSync) {
                     $this->validateSubmittedPromotionResult($promotionRequest, $promotionResult);
                     $this->applyPromotionResultToSaleRequest($request, $promotionResult);
+                    $this->normalizeSaleItemUomRequest($request);
                 }
 
                 foreach ($request->products as $item) {
@@ -761,9 +771,10 @@ class SaleController extends Controller
 
                 foreach ($request->products as $item) {
 
-                    $remainingQty = $item['quantity'];
-
                     $isFoc = !empty($item['is_foc']);
+                    $remainingQty = $isFoc
+                        ? (int) $item['quantity']
+                        : (int) $item['base_quantity'];
                     $rewardId = !empty($item['reward_id']) ? (int) $item['reward_id'] : null;
 
                     $unitPrice = $isFoc ? 0 : $item['price'];
@@ -886,12 +897,12 @@ class SaleController extends Controller
                             'promotion_id' => $item['promotion_id'] ?? null,
                             'is_foc' => $isFoc,
                             'reward_id' => $item['reward_id'] ?? null,
-                            'total' => $price * $deductQty,
+                            'total' => $price * $this->unitQuantityFromBase($item, $deductQty),
                             'created_at' => now(),
                             'updated_at' => now()
-                        ], $this->saleDetailUomSnapshot($item, $deductQty));
+                        ], $this->saleDetailUomSnapshotFromBase($item, $deductQty));
 
-                        $stockTransactions[] = [
+                        $stockTransactions[] = array_merge([
                             'inventory_id' => $inventory->id,
                             'reference_id' => $sale->id,
                             'reference_type' => 'sale',
@@ -901,7 +912,7 @@ class SaleController extends Controller
                             'created_by' => $updatedBy,
                             'created_at' => now(),
                             'updated_at' => now()
-                        ];
+                        ], $this->stockTransactionUomSnapshotFromBase($item, $deductQty));
 
                         $remainingQty -= $deductQty;
                     }
@@ -935,12 +946,12 @@ class SaleController extends Controller
                             'promotion_id' => $item['promotion_id'] ?? null,
                             'is_foc' => $isFoc,
                             'reward_id' => $item['reward_id'] ?? null,
-                            'total' => $price * $remainingQty,
+                            'total' => $price * $this->unitQuantityFromBase($item, $remainingQty),
                             'created_at' => now(),
                             'updated_at' => now()
-                        ], $this->saleDetailUomSnapshot($item, $remainingQty));
+                        ], $this->saleDetailUomSnapshotFromBase($item, $remainingQty));
 
-                        $stockTransactions[] = [
+                        $stockTransactions[] = array_merge([
                             'inventory_id' => $negativeInventory->id,
                             'reference_id' => $sale->id,
                             'reference_type' => 'sale',
@@ -950,12 +961,12 @@ class SaleController extends Controller
                             'created_by' => $updatedBy,
                             'created_at' => now(),
                             'updated_at' => now()
-                        ];
+                        ], $this->stockTransactionUomSnapshotFromBase($item, $remainingQty));
                     }
                 }
 
                 SaleDetail::insert($saleDetails);
-                StockTransaction::insert($stockTransactions);
+                $this->insertSaleStockTransactions($stockTransactions);
                 DB::table('sale_promotion_snapshots')
                     ->where('sale_id', $sale->id)
                     ->delete();
@@ -1770,6 +1781,70 @@ class SaleController extends Controller
         ]);
     }
 
+    private function normalizeSaleItemUomRequest(Request $request): void
+    {
+        $items = collect($request->products ?? [])
+            ->map(function (array $item, int $index) {
+                if (!empty($item['is_foc'])) {
+                    return $item;
+                }
+
+                $productId = (int) $item['product_id'];
+                $productUnit = null;
+
+                if (!empty($item['product_unit_id'])) {
+                    $productUnit = ProductUnit::with('unit')
+                        ->where('product_id', $productId)
+                        ->find($item['product_unit_id']);
+
+                    if (!$productUnit) {
+                        throw ValidationException::withMessages([
+                            "products.{$index}.product_unit_id" => "The selected product unit does not belong to product {$productId}.",
+                        ]);
+                    }
+                } elseif (!empty($item['unit_id'])) {
+                    $productUnit = ProductUnit::with('unit')
+                        ->where('product_id', $productId)
+                        ->where('unit_id', $item['unit_id'])
+                        ->first();
+                }
+
+                $conversion = $productUnit
+                    ? (float) $productUnit->conversion_to_base
+                    : 1.0;
+
+                if ($conversion <= 0) {
+                    throw ValidationException::withMessages([
+                        "products.{$index}.product_unit_id" => "Product {$productId} must have a positive conversion to its base unit.",
+                    ]);
+                }
+
+                $unitQuantity = (float) $item['quantity'];
+                $calculatedBaseQuantity = $unitQuantity * $conversion;
+                $baseQuantity = (int) round($calculatedBaseQuantity);
+
+                if (abs($calculatedBaseQuantity - $baseQuantity) > 0.000001) {
+                    throw ValidationException::withMessages([
+                        "products.{$index}.quantity" => "Product {$productId} converts to a fractional base quantity, but inventory stores whole quantities.",
+                    ]);
+                }
+
+                $item['product_unit_id'] = $productUnit?->id;
+                $item['unit_id'] = $productUnit?->unit_id ?? ($item['unit_id'] ?? null);
+                $item['unit_name'] = $productUnit?->unit?->name ?? ($item['unit_name'] ?? null);
+                $item['unit_barcode'] = $productUnit?->barcode ?? ($item['unit_barcode'] ?? null);
+                $item['unit_quantity'] = $unitQuantity;
+                $item['base_quantity'] = $baseQuantity;
+                $item['conversion_to_base'] = $conversion;
+
+                return $item;
+            })
+            ->values()
+            ->all();
+
+        $request->merge(['products' => $items]);
+    }
+
     private function saleDetailUomSnapshot(array $item, float $quantity): array
     {
         $conversion = isset($item['conversion_to_base'])
@@ -1794,6 +1869,60 @@ class SaleController extends Controller
             'unit_barcode' => $item['unit_barcode'] ?? null,
             'price_range_id' => $item['price_range_id'] ?? $item['product_unit_price_range_id'] ?? null,
         ];
+    }
+
+    private function saleDetailUomSnapshotFromBase(array $item, float $baseQuantity): array
+    {
+        return [
+            'product_unit_id' => !empty($item['product_unit_id']) ? (int) $item['product_unit_id'] : null,
+            'unit_id' => !empty($item['unit_id']) ? (int) $item['unit_id'] : null,
+            'unit_name' => $item['unit_name'] ?? null,
+            'unit_quantity' => $this->unitQuantityFromBase($item, $baseQuantity),
+            'base_quantity' => $baseQuantity,
+            'conversion_to_base' => (float) ($item['conversion_to_base'] ?? 1),
+            'unit_barcode' => $item['unit_barcode'] ?? null,
+            'price_range_id' => $item['price_range_id'] ?? $item['product_unit_price_range_id'] ?? null,
+        ];
+    }
+
+    private function stockTransactionUomSnapshotFromBase(array $item, float $baseQuantity): array
+    {
+        $snapshot = $this->saleDetailUomSnapshotFromBase($item, $baseQuantity);
+
+        return [
+            'product_unit_id' => $snapshot['product_unit_id'],
+            'unit_id' => $snapshot['unit_id'],
+            'unit_quantity' => $snapshot['unit_quantity'],
+            'base_quantity' => $snapshot['base_quantity'],
+            'conversion_to_base' => $snapshot['conversion_to_base'],
+        ];
+    }
+
+    private function insertSaleStockTransactions(array $transactions): void
+    {
+        $uomDefaults = [
+            'product_unit_id' => null,
+            'unit_id' => null,
+            'unit_quantity' => null,
+            'base_quantity' => null,
+            'conversion_to_base' => null,
+        ];
+
+        $transactions = array_map(
+            fn (array $transaction) => array_merge($uomDefaults, $transaction),
+            $transactions
+        );
+
+        StockTransaction::insert($transactions);
+    }
+
+    private function unitQuantityFromBase(array $item, float $baseQuantity): float
+    {
+        $conversion = (float) ($item['conversion_to_base'] ?? 1);
+
+        return $conversion > 0
+            ? $baseQuantity / $conversion
+            : $baseQuantity;
     }
 
     private function moneyEquals(float $left, float $right): bool
