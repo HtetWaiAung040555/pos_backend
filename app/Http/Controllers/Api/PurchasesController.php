@@ -565,15 +565,11 @@ class PurchasesController extends Controller
                   });
             })
 
-            ->when($request->filled('start_date') && $request->filled('end_date'), function ($q) use ($request) {
-                $q->whereBetween('purchases.purchase_date', [$request->start_date, $request->end_date]);
-            })
-
-            ->when($request->filled('start_date') && !$request->filled('end_date'), function ($q) use ($request) {
+            ->when($request->filled('start_date'), function ($q) use ($request) {
                 $q->whereDate('purchases.purchase_date', '>=', $request->start_date);
             })
 
-            ->when($request->filled('end_date') && !$request->filled('start_date'), function ($q) use ($request) {
+            ->when($request->filled('end_date'), function ($q) use ($request) {
                 $q->whereDate('purchases.purchase_date', '<=', $request->end_date);
             })
 
