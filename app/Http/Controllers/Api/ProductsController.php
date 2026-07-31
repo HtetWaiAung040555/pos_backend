@@ -1,13 +1,14 @@
 <?php
 
 namespace App\Http\Controllers\Api;
-use App\Models\BranchProduct;
-use App\Models\BranchProductUnitPrice;
-use App\Models\Product;
 
 use App\Http\Controllers\Controller;
 use App\Http\Resources\ProductResource;
 use App\Models\Branch;
+use App\Models\BranchProduct;
+use App\Models\BranchProductUnitPrice;
+use App\Models\Category;
+use App\Models\Product;
 use App\Models\ProductUnit;
 use App\Services\SellingPriceService;
 use Illuminate\Http\Request;
@@ -18,9 +19,22 @@ use Illuminate\Validation\ValidationException;
 
 class ProductsController extends Controller
 {
-    public function index()
+    public function index(Request $request)
     {
-        $products = Product::with($this->productRelations())->get();
+        $validated = $request->validate([
+            'category_id' => ['nullable', 'integer', 'exists:categories,id'],
+        ]);
+
+        $products = Product::with($this->productRelations())
+            ->when(
+                isset($validated['category_id']),
+                fn ($query) => $query->whereIn(
+                    'category_id',
+                    $this->categoryAndDescendantIds((int) $validated['category_id'])
+                )
+            )
+            ->get();
+
         return ProductResource::collection($products);
     }
 
@@ -36,22 +50,27 @@ class ProductsController extends Controller
         ]);
 
         $validated = $request->validate($this->productRules($request));
+        $this->validateAssignableCategory(
+            isset($validated['category_id'])
+                ? (int) $validated['category_id']
+                : null
+        );
 
         $product = DB::transaction(function () use ($request, $validated) {
             $product = Product::create([
-                'name'       => $request->name,
-                'unit_id'    => $request->unit_id ?? null,
-                'sec_prop'   => $request->sec_prop ?? null,
-                'category_id'=> $request->category_id ?? null,
+                'name' => $request->name,
+                'unit_id' => $request->unit_id ?? null,
+                'sec_prop' => $request->sec_prop ?? null,
+                'category_id' => $request->category_id ?? null,
                 'purchase_price' => $request->purchase_price ?? 0,
                 'old_purchase_price' => $request->old_purchase_price ?? $request->purchase_price ?? 0,
-                'price'      => $request->price ?? 0,
-                'old_price'  => $request->old_price ?? $request->price ?? 0,
-                'barcode'    => $request->barcode,
+                'price' => $request->price ?? 0,
+                'old_price' => $request->old_price ?? $request->price ?? 0,
+                'barcode' => $request->barcode,
                 'uom_enabled' => $request->boolean('uom_enabled'),
-                'status_id'  => $request->status_id,
+                'status_id' => $request->status_id,
                 'created_by' => $request->created_by,
-                'updated_by' => $request->updated_by ?? $request->created_by
+                'updated_by' => $request->updated_by ?? $request->created_by,
             ]);
 
             $this->syncProductUnits(
@@ -78,11 +97,11 @@ class ProductsController extends Controller
             $file = $request->file('image');
             $fname = $file->getClientOriginalName();
             $user_id = $request->created_by;
-            $imagenewname = uniqid($user_id) . '_' . $product->id . '_' . $fname;
+            $imagenewname = uniqid($user_id).'_'.$product->id.'_'.$fname;
 
             $file->move(public_path('assets/img/products/'), $imagenewname);
 
-            $product->image = 'assets/img/products/' . $imagenewname;
+            $product->image = 'assets/img/products/'.$imagenewname;
             $product->save();
         }
 
@@ -92,6 +111,7 @@ class ProductsController extends Controller
     public function show(string $id)
     {
         $product = Product::with($this->productRelations())->findOrFail($id);
+
         return new ProductResource($product);
     }
 
@@ -106,6 +126,14 @@ class ProductsController extends Controller
         ]);
 
         $validated = $request->validate($this->productRules($request, $product));
+
+        if (array_key_exists('category_id', $validated)) {
+            $this->validateAssignableCategory(
+                $validated['category_id'] === null
+                    ? null
+                    : (int) $validated['category_id']
+            );
+        }
 
         $data = $request->only([
             'name',
@@ -126,16 +154,16 @@ class ProductsController extends Controller
 
         if ($request->hasFile('image')) {
             $file = $request->file('image');
-        
+
             if ($product->image && File::exists(public_path($product->image))) {
                 File::delete(public_path($product->image));
             }
-        
+
             $fname = $file->getClientOriginalName();
-            $imagenewname = uniqid($user_id) . '_' . $product->id . '_' . $fname;
-        
+            $imagenewname = uniqid($user_id).'_'.$product->id.'_'.$fname;
+
             $file->move(public_path('assets/img/products/'), $imagenewname);
-            $data['image'] = 'assets/img/products/' . $imagenewname;
+            $data['image'] = 'assets/img/products/'.$imagenewname;
         }
 
         DB::transaction(function () use ($product, $data, $request, $validated, $user_id) {
@@ -167,7 +195,7 @@ class ProductsController extends Controller
             $product = Product::findOrFail($id);
             $blockers = $this->productDeleteBlockers((int) $product->id);
 
-            if (!empty($blockers)) {
+            if (! empty($blockers)) {
                 return response()->json([
                     'error' => 'Product cannot be deleted because it is already used.',
                     'blockers' => $blockers,
@@ -218,7 +246,7 @@ class ProductsController extends Controller
     public function lastCustomBarcode(Request $request)
     {
         $prefix = $request->get('prefix', 'KBAM');
-        $like = $prefix . '-%';
+        $like = $prefix.'-%';
 
         $productBarcodes = Product::whereNotNull('barcode')
             ->where('barcode', 'like', $like)
@@ -236,12 +264,20 @@ class ProductsController extends Controller
         return response()->json(['barcode' => $barcode], 200);
     }
 
-    public function saleproducts(Request $request){
+    public function saleproducts(Request $request)
+    {
+        $validated = $request->validate([
+            'category_id' => ['nullable', 'integer', 'exists:categories,id'],
+        ]);
+
         $warehouseId = $request->warehouse_id;
         $branchId = $request->branch_id
             ? (int) $request->branch_id
             : ($warehouseId ? Branch::where('warehouse_id', $warehouseId)->value('id') : null);
         $priceResolver = app(SellingPriceService::class);
+        $categoryIds = isset($validated['category_id'])
+            ? $this->categoryAndDescendantIds((int) $validated['category_id'])
+            : null;
 
         $products = Product::query()
             ->leftJoin('inventories', function ($join) use ($warehouseId) {
@@ -254,6 +290,7 @@ class ProductsController extends Controller
             })
             ->select(
                 'products.id',
+                'products.category_id',
                 'products.image',
                 'products.name',
                 'products.default_product_unit_id',
@@ -263,13 +300,19 @@ class ProductsController extends Controller
                 DB::raw('COALESCE(SUM(inventories.qty), 0) as qty')
             )
             ->with([
+                'category:id,name,code,parent_id',
                 'productUnits.unit',
                 'productUnits.priceRanges',
                 'productUnits.branchUnitPrices.branchProduct',
                 'productUnits.branchUnitPrices.priceRanges',
             ])
+            ->when(
+                $categoryIds !== null,
+                fn ($query) => $query->whereIn('products.category_id', $categoryIds)
+            )
             ->groupBy(
                 'products.id',
+                'products.category_id',
                 'products.image',
                 'products.name',
                 'products.default_product_unit_id',
@@ -279,67 +322,144 @@ class ProductsController extends Controller
             )
             ->get();
 
-            return response()->json(
-                $products->map(function ($p) use ($branchId, $priceResolver) {
-                    $productPrice = $priceResolver->resolve((int) $p->id, $branchId);
+        return response()->json(
+            $products->map(function ($p) use ($branchId, $priceResolver) {
+                $productPrice = $priceResolver->resolve((int) $p->id, $branchId);
 
-                    return [
-                        'id'        => $p->id,
-                        'name'      => $p->name,
-                        'price'     => $productPrice['price'],
-                        'price_source' => $productPrice['source'],
-                        'branch_product_id' => $productPrice['branch_product_id'],
-                        'qty'       => (int) $p->qty,
-                        'image_url' => $p->image ? asset($p->image) : asset('assets/img/products/default.png'),
-                        'barcode' => $p->barcode,
-                        'default_product_unit_id' => $p->default_product_unit_id,
-                        'uom_enabled' => $p->uom_enabled,
-                        'product_units' => $p->productUnits->map(function ($productUnit) use ($branchId, $priceResolver) {
-                            $unitPrice = $priceResolver->resolve(
-                                (int) $productUnit->product_id,
-                                $branchId,
-                                (int) $productUnit->id,
-                                1
-                            );
-                            $branchUnitPrice = $branchId
-                                ? $productUnit->branchUnitPrices->first(
-                                    fn ($price) => (int) ($price->branchProduct->branch_id ?? 0) === (int) $branchId
-                                )
-                                : null;
-                            $rangeSource = $branchUnitPrice
-                                ? $branchUnitPrice->priceRanges
-                                : $productUnit->priceRanges;
+                return [
+                    'id' => $p->id,
+                    'name' => $p->name,
+                    'category_id' => $p->category_id,
+                    'category' => $p->category ? [
+                        'id' => $p->category->id,
+                        'name' => $p->category->name,
+                        'code' => $p->category->code,
+                    ] : null,
+                    'price' => $productPrice['price'],
+                    'price_source' => $productPrice['source'],
+                    'branch_product_id' => $productPrice['branch_product_id'],
+                    'qty' => (int) $p->qty,
+                    'image_url' => $p->image ? asset($p->image) : asset('assets/img/products/default.png'),
+                    'barcode' => $p->barcode,
+                    'default_product_unit_id' => $p->default_product_unit_id,
+                    'uom_enabled' => $p->uom_enabled,
+                    'product_units' => $p->productUnits->map(function ($productUnit) use ($branchId, $priceResolver) {
+                        $unitPrice = $priceResolver->resolve(
+                            (int) $productUnit->product_id,
+                            $branchId,
+                            (int) $productUnit->id,
+                            1
+                        );
+                        $branchUnitPrice = $branchId
+                            ? $productUnit->branchUnitPrices->first(
+                                fn ($price) => (int) ($price->branchProduct->branch_id ?? 0) === (int) $branchId
+                            )
+                            : null;
+                        $rangeSource = $branchUnitPrice
+                            ? $branchUnitPrice->priceRanges
+                            : $productUnit->priceRanges;
 
-                            return [
-                                'id' => $productUnit->id,
-                                'unit_id' => $productUnit->unit_id,
-                                'unit_name' => $productUnit->unit->name ?? null,
-                                'barcode' => $productUnit->barcode,
-                                'conversion_to_base' => $productUnit->conversion_to_base,
-                                'price' => $unitPrice['price'],
-                                'price_source' => $unitPrice['source'],
-                                'branch_product_unit_price_id' => $unitPrice['branch_product_unit_price_id'],
-                                'purchase_price' => $productUnit->purchase_price,
-                                'is_base_unit' => $productUnit->is_base_unit,
-                                'is_default_sale_unit' => $productUnit->is_default_sale_unit,
-                                'price_ranges' => $rangeSource->map(function ($range) use ($branchUnitPrice) {
-                                    return [
-                                        'id' => $range->id,
-                                        'min_qty' => $range->min_qty,
-                                        'max_qty' => $range->max_qty,
-                                        'price' => $range->price,
-                                        'price_source' => $branchUnitPrice
-                                            ? 'BRANCH_UOM_PRICE_RANGE'
-                                            : 'GLOBAL_UOM_PRICE_RANGE',
-                                        'branch_product_unit_price_range_id' => $branchUnitPrice ? $range->id : null,
-                                        'product_unit_price_range_id' => $branchUnitPrice ? null : $range->id,
-                                    ];
-                                }),
-                            ];
-                        }),
-                    ];
-                })
-            );
+                        return [
+                            'id' => $productUnit->id,
+                            'unit_id' => $productUnit->unit_id,
+                            'unit_name' => $productUnit->unit->name ?? null,
+                            'barcode' => $productUnit->barcode,
+                            'conversion_to_base' => $productUnit->conversion_to_base,
+                            'price' => $unitPrice['price'],
+                            'price_source' => $unitPrice['source'],
+                            'branch_product_unit_price_id' => $unitPrice['branch_product_unit_price_id'],
+                            'purchase_price' => $productUnit->purchase_price,
+                            'is_base_unit' => $productUnit->is_base_unit,
+                            'is_default_sale_unit' => $productUnit->is_default_sale_unit,
+                            'price_ranges' => $rangeSource->map(function ($range) use ($branchUnitPrice) {
+                                return [
+                                    'id' => $range->id,
+                                    'min_qty' => $range->min_qty,
+                                    'max_qty' => $range->max_qty,
+                                    'price' => $range->price,
+                                    'price_source' => $branchUnitPrice
+                                        ? 'BRANCH_UOM_PRICE_RANGE'
+                                        : 'GLOBAL_UOM_PRICE_RANGE',
+                                    'branch_product_unit_price_range_id' => $branchUnitPrice ? $range->id : null,
+                                    'product_unit_price_range_id' => $branchUnitPrice ? null : $range->id,
+                                ];
+                            }),
+                        ];
+                    }),
+                ];
+            })
+        );
+    }
+
+    private function categoryAndDescendantIds(int $categoryId): array
+    {
+        $categoriesByParent = Category::query()
+            ->get(['id', 'parent_id'])
+            ->groupBy(fn (Category $category) => $category->parent_id);
+        $categoryIds = [];
+        $pendingIds = [$categoryId];
+
+        while ($pendingIds !== []) {
+            $currentId = array_shift($pendingIds);
+
+            if (in_array($currentId, $categoryIds, true)) {
+                continue;
+            }
+
+            $categoryIds[] = $currentId;
+
+            foreach ($categoriesByParent->get($currentId, collect()) as $child) {
+                $pendingIds[] = (int) $child->id;
+            }
+        }
+
+        return $categoryIds;
+    }
+
+    private function validateAssignableCategory(?int $categoryId): void
+    {
+        if ($categoryId === null) {
+            return;
+        }
+
+        $category = Category::with('status:id,name')->findOrFail($categoryId);
+
+        if ($category->children()->exists()) {
+            throw ValidationException::withMessages([
+                'category_id' => 'Products can only be assigned to a category without child categories.',
+            ]);
+        }
+
+        $categories = Category::with('status:id,name')
+            ->get(['id', 'parent_id', 'status_id'])
+            ->keyBy('id');
+        $currentCategory = $categories->get($categoryId);
+        $visited = [];
+
+        while ($currentCategory !== null) {
+            $currentId = (int) $currentCategory->id;
+
+            if (isset($visited[$currentId])) {
+                throw ValidationException::withMessages([
+                    'category_id' => 'The selected category belongs to an invalid category hierarchy.',
+                ]);
+            }
+
+            $visited[$currentId] = true;
+
+            if (
+                $currentCategory->status === null
+                || strcasecmp($currentCategory->status->name, 'Active') !== 0
+            ) {
+                throw ValidationException::withMessages([
+                    'category_id' => 'The selected category and all of its parent categories must be active.',
+                ]);
+            }
+
+            $currentCategory = $currentCategory->parent_id === null
+                ? null
+                : $categories->get((int) $currentCategory->parent_id);
+        }
     }
 
     private function productDeleteBlockers(int $productId): array
@@ -489,7 +609,7 @@ class ProductsController extends Controller
     private function syncProductUnits(Product $product, array $productUnits, int $createdBy, int $updatedBy): void
     {
         foreach ($productUnits as $productUnitData) {
-            $productUnit = !empty($productUnitData['id'])
+            $productUnit = ! empty($productUnitData['id'])
                 ? $product->productUnits()->whereKey($productUnitData['id'])->firstOrFail()
                 : new ProductUnit(['product_id' => $product->id]);
 
@@ -523,7 +643,7 @@ class ProductsController extends Controller
     private function syncProductUnitPriceRanges(ProductUnit $productUnit, array $priceRanges, int $createdBy, int $updatedBy): void
     {
         foreach ($priceRanges as $rangeData) {
-            $priceRange = !empty($rangeData['id'])
+            $priceRange = ! empty($rangeData['id'])
                 ? $productUnit->priceRanges()->whereKey($rangeData['id'])->firstOrFail()
                 : $productUnit->priceRanges()->make();
 
@@ -550,7 +670,7 @@ class ProductsController extends Controller
         $product->loadMissing('productUnits.unit');
 
         foreach ($branchProducts as $branchProductData) {
-            $branchProduct = !empty($branchProductData['id'])
+            $branchProduct = ! empty($branchProductData['id'])
                 ? $product->branchProducts()->whereKey($branchProductData['id'])->firstOrFail()
                 : $product->branchProducts()->firstOrNew([
                     'branch_id' => $branchProductData['branch_id'],
@@ -587,7 +707,7 @@ class ProductsController extends Controller
         foreach ($unitPrices as $unitPriceData) {
             $productUnit = $this->resolveBranchPriceProductUnit($product, $unitPriceData);
 
-            $branchUnitPrice = !empty($unitPriceData['id'])
+            $branchUnitPrice = ! empty($unitPriceData['id'])
                 ? $branchProduct->unitPrices()->whereKey($unitPriceData['id'])->firstOrFail()
                 : $branchProduct->unitPrices()->firstOrNew([
                     'product_unit_id' => $productUnit->id,
@@ -623,7 +743,7 @@ class ProductsController extends Controller
         int $updatedBy
     ): void {
         foreach ($priceRanges as $rangeData) {
-            $priceRange = !empty($rangeData['id'])
+            $priceRange = ! empty($rangeData['id'])
                 ? $branchUnitPrice->priceRanges()->whereKey($rangeData['id'])->firstOrFail()
                 : $branchUnitPrice->priceRanges()->make();
 
@@ -643,7 +763,7 @@ class ProductsController extends Controller
 
     private function resolveBranchPriceProductUnit(Product $product, array $unitPriceData): ProductUnit
     {
-        if (!empty($unitPriceData['product_unit_id'])) {
+        if (! empty($unitPriceData['product_unit_id'])) {
             $productUnit = $product->productUnits
                 ->firstWhere('id', (int) $unitPriceData['product_unit_id']);
 
@@ -656,7 +776,7 @@ class ProductsController extends Controller
             ]);
         }
 
-        if (!empty($unitPriceData['unit_id'])) {
+        if (! empty($unitPriceData['unit_id'])) {
             $productUnit = $product->productUnits
                 ->firstWhere('unit_id', (int) $unitPriceData['unit_id']);
 
@@ -696,7 +816,7 @@ class ProductsController extends Controller
             ->orderBy('id')
             ->first();
 
-        if (!$defaultProductUnit) {
+        if (! $defaultProductUnit) {
             return;
         }
 
@@ -712,7 +832,7 @@ class ProductsController extends Controller
 
     private function normalizeProductUnitsInput(Request $request): void
     {
-        if (!$request->has('product_units') || !is_string($request->product_units)) {
+        if (! $request->has('product_units') || ! is_string($request->product_units)) {
             return;
         }
 
@@ -725,7 +845,7 @@ class ProductsController extends Controller
 
     private function normalizeBranchProductsInput(Request $request): void
     {
-        if (!$request->has('branch_products') || !is_string($request->branch_products)) {
+        if (! $request->has('branch_products') || ! is_string($request->branch_products)) {
             return;
         }
 

@@ -14,9 +14,22 @@ class CategoryResource extends JsonResource
     {
         return [
             'id' => $this->id,
+            'parent_id' => $this->parent_id,
             'name' => $this->name,
+            'code' => $this->code,
+            'sort_order' => $this->sort_order,
 
-            'status' => $this->whenLoaded('status', fn() => [
+            'parent' => $this->whenLoaded('parent', fn () => $this->parent ? [
+                'id' => $this->parent->id,
+                'name' => $this->parent->name,
+                'code' => $this->parent->code,
+            ] : null),
+
+            'children' => CategoryResource::collection(
+                $this->whenLoaded('children')
+            ),
+
+            'status' => $this->whenLoaded('status', fn () => [
                 'id' => $this->status->id,
                 'name' => $this->status->name,
             ]),
@@ -30,7 +43,7 @@ class CategoryResource extends JsonResource
                 'id' => $this->updatedBy->id ?? null,
                 'name' => $this->updatedBy->name ?? null,
             ],
-            
+
             'created_at' => $this->toLocalDateTime($this->created_at),
             'updated_at' => $this->toLocalDateTime($this->updated_at),
         ];
