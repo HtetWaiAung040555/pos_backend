@@ -201,6 +201,7 @@ class PromotionsController extends Controller
             }
 
             $tiers = $this->normalizePromotionTiers($validated);
+            $productIds = $this->promotionProductIds($validated);
 
             Log::info('Creating promotion with data', $validated);
 
@@ -212,8 +213,17 @@ class PromotionsController extends Controller
                 $warehouseScopeType,
                 $promoMode,
                 $conditionType,
-                $tiers
+                $tiers,
+                $productIds
             ) {
+                if ($validated['promo_type'] === 'PRODUCT_DISCOUNT') {
+                    $this->validateProductDiscountEligibility(
+                        $productIds,
+                        $validated['start_at'],
+                        $validated['end_at']
+                    );
+                }
+
                 $promotion = Promotion::create([
                     'name' => $validated['name'],
                     'description' => $validated['description'] ?? null,
@@ -579,6 +589,26 @@ class PromotionsController extends Controller
             $targetEndAt = $validated['end_at'] ?? $promotion->end_at;
             $targetStatusId = $this->promotionLifecycleStatusId($targetStartAt, $targetEndAt);
 
+            if ($targetPromoType === 'PRODUCT_DISCOUNT') {
+                $hasProductInput = array_key_exists('products', $validated)
+                    || array_key_exists('promotion_products', $validated);
+                $productIds = $hasProductInput
+                    ? $this->promotionProductIds($validated)
+                    : $promotion->products()
+                        ->pluck('products.id')
+                        ->map(fn ($productId) => (int) $productId)
+                        ->unique()
+                        ->values()
+                        ->all();
+
+                $this->validateProductDiscountEligibility(
+                    $productIds,
+                    $targetStartAt,
+                    $targetEndAt,
+                    (int) $promotion->id
+                );
+            }
+
             $promotion->update([
                 'name' => $validated['name'] ?? $promotion->name,
                 'description' => $validated['description'] ?? $promotion->description,
@@ -854,6 +884,7 @@ class PromotionsController extends Controller
         $orderPromotions = [];
         $freeItems = [];
         $effectiveUnitPrices = [];
+        $priceOverrideLineKeys = [];
 
         foreach ($cartItems as $item) {
             $effectiveUnitPrices[$item['_promo_line_key']] = (float) ($item['original_price'] ?? $item['price']);
@@ -904,19 +935,29 @@ class PromotionsController extends Controller
                 $overrideAmount = $overrideItems->sum(
                     fn ($item) => $item['qty'] * ($item['original_price'] ?? $item['price'])
                 );
+                $overrideTerms = $this->getPriceOverrideTerms($promotion, $conditions, (int) $tier);
 
                 [$isEligible] = $this->evaluatePromotionConditions(
                     $overrideItems,
                     $promotion,
                     $conditions,
                     $overrideAmount,
-                    $overrideQty
+                    $overrideQty,
+                    $overrideTerms['quantity_target_override']
                 );
 
-                $overrideUnitPrice = $this->getPriceOverrideUnitPrice($promotion, $conditions, (int) $tier);
+                $overrideUnitPrice = $overrideTerms['unit_price'];
 
                 if (! $isEligible || is_null($overrideUnitPrice)) {
                     continue;
+                }
+
+                if ($overrideTerms['uses_frontend_field_order']) {
+                    Log::info("PRICE_OVERRIDE promotion ID {$promotion->id} uses frontend quantity/price field order", [
+                        'qualified_quantity' => $overrideTerms['quantity_target_override'],
+                        'bundle_price' => $overrideTerms['bundle_price'],
+                        'override_unit_price' => $overrideUnitPrice,
+                    ]);
                 }
 
                 Log::info("Evaluating PRICE_OVERRIDE promotion ID {$promotion->id} for tier {$tier}", [
@@ -929,7 +970,10 @@ class PromotionsController extends Controller
                 foreach ($overrideItems as $item) {
                     $productId = (int) $item['product_id'];
                     $lineKey = $item['_promo_line_key'];
-                    $currentPrice = (float) ($effectiveUnitPrices[$lineKey] ?? ($item['original_price'] ?? $item['price']));
+                    $originalPrice = (float) ($item['original_price'] ?? $item['price']);
+                    $currentPrice = isset($priceOverrideLineKeys[$lineKey])
+                        ? (float) ($effectiveUnitPrices[$lineKey] ?? $originalPrice)
+                        : $originalPrice;
                     $discountedPrice = min($currentPrice, $overrideUnitPrice);
                     $discount = max(0, $currentPrice - $discountedPrice);
                     $isAlreadyOverridePrice = abs($currentPrice - $overrideUnitPrice) < 0.01;
@@ -939,6 +983,7 @@ class PromotionsController extends Controller
                     }
 
                     $effectiveUnitPrices[$lineKey] = $discountedPrice;
+                    $priceOverrideLineKeys[$lineKey] = true;
 
                     $productDiscounts[] = [
                         'product_id' => $productId,
@@ -961,6 +1006,14 @@ class PromotionsController extends Controller
                     break;
                 }
             }
+        }
+
+        if (! empty($priceOverrideLineKeys)) {
+            $productDiscounts = array_values(array_filter(
+                $productDiscounts,
+                fn ($discount) => $discount['promo_type'] !== 'PRODUCT_DISCOUNT'
+                    || ! isset($priceOverrideLineKeys[$discount['line_key']])
+            ));
         }
 
         $discountedCartItems = $cartItems->map(function ($item) use ($effectiveUnitPrices) {
@@ -1253,22 +1306,31 @@ class PromotionsController extends Controller
         return $cartItems;
     }
 
-    private function evaluatePromotionConditions($cartItems, Promotion $promotion, $conditions, float $orderAmount, $orderQty): array
-    {
+    private function evaluatePromotionConditions(
+        $cartItems,
+        Promotion $promotion,
+        $conditions,
+        float $orderAmount,
+        $orderQty,
+        ?float $quantityTargetOverride = null
+    ): array {
         $isEligible = true;
         $multipliers = [];
 
         foreach ($conditions as $condition) {
             $eligible = false;
             $multiplier = null;
-            $targetValue = (float) ($condition->target_value ?? 0);
+            $isQuantityCondition = in_array($condition->condition_type, ['ITEM_QTY', 'ORDER_QTY'], true);
+            $targetValue = $isQuantityCondition && ! is_null($quantityTargetOverride)
+                ? $quantityTargetOverride
+                : (float) ($condition->target_value ?? 0);
 
             switch ($condition->condition_type) {
                 case 'ITEM_QTY':
                     $qty = $this->getConditionCartItems($cartItems, $promotion, $condition)
                         ->sum('qty');
 
-                    $eligible = $this->comparePromotionValue($qty, $condition);
+                    $eligible = $this->comparePromotionValue($qty, $condition, $targetValue);
                     $multiplier = $targetValue > 0 ? floor($qty / $targetValue) : 1;
                     break;
 
@@ -1276,17 +1338,17 @@ class PromotionsController extends Controller
                     $amount = $this->getConditionCartItems($cartItems, $promotion, $condition)
                         ->sum(fn ($i) => $i['qty'] * $i['price']);
 
-                    $eligible = $this->comparePromotionValue($amount, $condition);
+                    $eligible = $this->comparePromotionValue($amount, $condition, $targetValue);
                     $multiplier = $targetValue > 0 ? floor($amount / $targetValue) : 1;
                     break;
 
                 case 'ORDER_AMOUNT':
-                    $eligible = $this->comparePromotionValue($orderAmount, $condition);
+                    $eligible = $this->comparePromotionValue($orderAmount, $condition, $targetValue);
                     $multiplier = $targetValue > 0 ? floor($orderAmount / $targetValue) : 1;
                     break;
 
                 case 'ORDER_QTY':
-                    $eligible = $this->comparePromotionValue($orderQty, $condition);
+                    $eligible = $this->comparePromotionValue($orderQty, $condition, $targetValue);
                     $multiplier = $targetValue > 0 ? floor($orderQty / $targetValue) : 1;
                     break;
             }
@@ -1307,10 +1369,10 @@ class PromotionsController extends Controller
         ];
     }
 
-    private function comparePromotionValue($actualValue, $condition): bool
+    private function comparePromotionValue($actualValue, $condition, ?float $targetValueOverride = null): bool
     {
         $actualValue = (float) $actualValue;
-        $targetValue = (float) ($condition->target_value ?? 0);
+        $targetValue = $targetValueOverride ?? (float) ($condition->target_value ?? 0);
         $targetValueTo = (float) ($condition->target_value_to ?? 0);
         $operator = strtoupper(trim((string) ($condition->operator ?? '>=')));
 
@@ -1640,7 +1702,7 @@ class PromotionsController extends Controller
         return $products->first(fn ($product) => empty($product->pivot->product_unit_id));
     }
 
-    private function getPriceOverrideUnitPrice(Promotion $promotion, $conditions, ?int $tier = null): ?float
+    private function getPriceOverrideTerms(Promotion $promotion, $conditions, ?int $tier = null): array
     {
         if ($tier) {
             $rewardOverridePrice = $promotion->rewards
@@ -1650,7 +1712,12 @@ class PromotionsController extends Controller
                 ->first();
 
             if (! is_null($rewardOverridePrice)) {
-                return (float) $rewardOverridePrice;
+                return [
+                    'unit_price' => (float) $rewardOverridePrice,
+                    'bundle_price' => null,
+                    'quantity_target_override' => null,
+                    'uses_frontend_field_order' => false,
+                ];
             }
         }
 
@@ -1662,14 +1729,45 @@ class PromotionsController extends Controller
             ->min();
 
         if (is_null($promotion->override_price)) {
-            return null;
+            return [
+                'unit_price' => null,
+                'bundle_price' => null,
+                'quantity_target_override' => null,
+                'uses_frontend_field_order' => false,
+            ];
         }
+
+        $configuredOverridePrice = (float) $promotion->override_price;
 
         if (! $quantityTarget) {
-            return (float) $promotion->override_price;
+            return [
+                'unit_price' => $configuredOverridePrice,
+                'bundle_price' => null,
+                'quantity_target_override' => null,
+                'uses_frontend_field_order' => false,
+            ];
         }
 
-        return round((float) $promotion->override_price / $quantityTarget, 2);
+        $usesFrontendFieldOrder = $promotion->promo_mode === 'MIX_MATCH'
+            && $configuredOverridePrice > 0
+            && floor($configuredOverridePrice) === $configuredOverridePrice
+            && $configuredOverridePrice < $quantityTarget;
+
+        if ($usesFrontendFieldOrder) {
+            return [
+                'unit_price' => round($quantityTarget / $configuredOverridePrice, 2),
+                'bundle_price' => $quantityTarget,
+                'quantity_target_override' => $configuredOverridePrice,
+                'uses_frontend_field_order' => true,
+            ];
+        }
+
+        return [
+            'unit_price' => round($configuredOverridePrice / $quantityTarget, 2),
+            'bundle_price' => $configuredOverridePrice,
+            'quantity_target_override' => null,
+            'uses_frontend_field_order' => false,
+        ];
     }
 
     private function normalizePromotionTiers(array $validated): array
@@ -1792,6 +1890,72 @@ class PromotionsController extends Controller
                 ->unique()
                 ->values()
                 ->all(),
+        ]);
+    }
+
+    private function promotionProductIds(array $validated): array
+    {
+        return collect($validated['promotion_products'] ?? [])
+            ->pluck('product_id')
+            ->merge($validated['products'] ?? [])
+            ->filter(fn ($productId) => ! empty($productId))
+            ->map(fn ($productId) => (int) $productId)
+            ->unique()
+            ->values()
+            ->all();
+    }
+
+    private function validateProductDiscountEligibility(
+        array $productIds,
+        $startAt,
+        $endAt,
+        ?int $excludedPromotionId = null
+    ): void {
+        $productIds = collect($productIds)
+            ->map(fn ($productId) => (int) $productId)
+            ->filter(fn ($productId) => $productId > 0)
+            ->unique()
+            ->values();
+
+        if ($productIds->isEmpty()) {
+            return;
+        }
+
+        $conflicts = DB::table('promotions_products as promotion_product')
+            ->join('promotions as promotion', 'promotion.id', '=', 'promotion_product.promotion_id')
+            ->where('promotion.promo_type', 'PRODUCT_DISCOUNT')
+            ->whereNull('promotion.void_at')
+            ->where('promotion.start_at', '<=', $endAt)
+            ->where('promotion.end_at', '>=', $startAt)
+            ->whereIn('promotion_product.product_id', $productIds)
+            ->when(
+                $excludedPromotionId,
+                fn ($query) => $query->where('promotion.id', '!=', $excludedPromotionId)
+            )
+            ->select([
+                'promotion_product.product_id',
+                'promotion.id as promotion_id',
+                'promotion.name as promotion_name',
+            ])
+            ->orderBy('promotion_product.product_id')
+            ->orderBy('promotion.id')
+            ->lockForUpdate()
+            ->get();
+
+        if ($conflicts->isEmpty()) {
+            return;
+        }
+
+        $conflictDetails = $conflicts
+            ->unique(fn ($conflict) => "{$conflict->product_id}:{$conflict->promotion_id}")
+            ->map(
+                fn ($conflict) => "product {$conflict->product_id} "
+                    ."({$conflict->promotion_name}, promotion {$conflict->promotion_id})"
+            )
+            ->implode(', ');
+
+        throw ValidationException::withMessages([
+            'products' => "The selected products already belong to overlapping PRODUCT_DISCOUNT promotions: {$conflictDetails}.",
         ]);
     }
 
