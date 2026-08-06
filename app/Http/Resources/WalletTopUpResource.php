@@ -15,6 +15,7 @@ class WalletTopUpResource extends JsonResource
         return [
             'id'          => $this->id,
             'customer_id' => $this->customer_id,
+            'type'        => $this->type ?? 'deposit',
             'amount'      => $this->amount,
 
             'payment_method' => $this->paymentMethod ? [

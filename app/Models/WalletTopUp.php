@@ -17,6 +17,7 @@ class WalletTopUp extends Model
     protected $fillable = [
         'id',
         'customer_id',
+        'type',
         'amount',
         'payment_id',
         'status_id',
