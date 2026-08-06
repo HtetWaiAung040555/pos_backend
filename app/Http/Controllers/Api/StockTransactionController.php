@@ -94,13 +94,12 @@ class StockTransactionController extends Controller
         DB::beginTransaction();
         try {
             $inventory = $transaction->inventory;
-            Log::info("Associated inventory before deletion: ID: {$inventory->id}, Product ID: {$inventory->product_id}, Current Qty: {$inventory->qty}");
             if ($inventory) {
                 $change = (float) ($transaction->quantity_change ?? 0);
 
                 if ($transaction->type === 'in') {
                     // reverse an "in" transaction by decreasing inventory
-                    $inventory->qty = max(0, $inventory->qty - $change);
+                    $inventory->qty = $inventory->qty - $change;
                 } elseif ($transaction->type === 'out') {
                     // reverse an "out" transaction by increasing inventory
                     $inventory->qty = $inventory->qty + $change;
